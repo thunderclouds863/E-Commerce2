@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guspart Autoshop - Order Process</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f5f5f5;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px 50px;
+            align-items: center;
+            background: white;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #2F4F4F;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 30px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: #2F4F4F;
+        }
+
+        .progress-bar {
+            display: flex;
+            justify-content: center;
+            margin: 30px auto;
+            max-width: 800px;
+            position: relative;
+        }
+
+        .progress-step {
+            background: #e0e0e0;
+            padding: 15px 40px;
+            color: #2F4F4F;
+            position: relative;
+            flex: 1;
+            text-align: center;
+        }
+
+        .progress-step.active {
+            background: #2F4F4F;
+            color: white;
+        }
+
+        .progress-step:before {
+            content: '';
+            position: absolute;
+            right: -20px;
+            border-left: 20px solid;
+            border-left-color: inherit;
+            border-top: 25px solid transparent;
+            border-bottom: 25px solid transparent;
+            top: 0;
+        }
+
+        .order-content {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #2F4F4F;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .address-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .product-details {
+            display: flex;
+            gap: 40px;
+            margin: 20px 0;
+        }
+
+        .product-image {
+            width: 200px;
+            height: 200px;
+            object-fit: contain;
+        }
+
+        .order-summary {
+            background: #2F4F4F;
+            color: white;
+            padding: 20px;
+            border-radius: 4px;
+        }
+
+        .next-btn {
+            background: #2F4F4F;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
+        }
+
+        .step-content {
+            display: none;
+        }
+
+        .step-content.active {
+            display: block;
+        }
+
+        .order-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="logo">
+            <span>🔧</span>
+            <span>Guspart Autoshop</span>
+        </div>
+        <div class="nav-links">
+            <a href="#">Home</a>
+            <a href="#">About</a>
+            <a href="#">Product</a>
+            <a href="#">Language</a>
+            <a href="#">Contact Us</a>
+        </div>
+    </nav>
+
+    <div class="progress-bar">
+        <div class="progress-step active" id="step1">Review Order</div>
+        <div class="progress-step" id="step2">Ordering</div>
+        <div class="progress-step" id="step3">Payment</div>
+    </div>
+
+    <div class="order-content">
+        <!-- Step 1: Review Order -->
+        <div class="step-content active" id="review-content">
+            <h2>Delivery Address</h2>
+            <form id="address-form">
+                <div class="form-group">
+                    <label>Full Name</label>
+                    <input type="text" required>
+                </div>
+                <div class="form-group">
+                    <label>Phone Number</label>
+                    <input type="tel" required>
+                </div>
+                <div class="form-group">
+                    <label>Street</label>
+                    <input type="text" required>
+                </div>
+                <div class="form-group">
+                    <label>Address</label>
+                    <div class="address-grid">
+                        <select required>
+                            <option>Province</option>
+                        </select>
+                        <select required>
+                            <option>City</option>
+                        </select>
+                        <select required>
+                            <option>District</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Zip Code</label>
+                    <input type="text" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" required> Delivery Address is Correct
+                    </label>
+                </div>
+                <button type="button" class="next-btn" onclick="nextStep(1)">Next</button>
+            </form>
+        </div>
+
+        <!-- Step 2: Ordering -->
+        <div class="step-content" id="ordering-content">
+            <div class="product-details">
+                <img src="https://example.com/pulley.jpg" alt="Pulley" class="product-image">
+                <div class="order-summary">
+                    <h3>Ordering Details:</h3>
+                    <div class="order-row">
+                        <span>Subtotal:</span>
+                        <span>Rp320.000</span>
+                    </div>
+                    <div class="order-row">
+                        <span>Discount:</span>
+                        <span>-Rp0</span>
+                    </div>
+                    <div class="order-row">
+                        <span>Shipping Cost:</span>
+                        <span>Rp41.000</span>
+                    </div>
+                    <div class="order-row">
+                        <strong>Total:</strong>
+                        <strong>Rp361.000</strong>
+                    </div>
+                    <select class="form-group" style="width: 100%; margin-top: 20px;">
+                        <option>Payment Method</option>
+                    </select>
+                </div>
+            </div>
+            <button type="button" class="next-btn" onclick="nextStep(2)">Order Now</button>
+        </div>
+
+        <!-- Step 3: Payment -->
+        <div class="step-content" id="payment-content">
+            <div class="product-details">
+                <img src="https://example.com/pulley.jpg" alt="Pulley" class="product-image">
+                <div class="order-summary">
+                    <h3>Ordering Details:</h3>
+                    <div class="order-row">
+                        <span>Subtotal:</span>
+                        <span>Rp320.000</span>
+                    </div>
+                    <div class="order-row">
+                        <span>Discount:</span>
+                        <span>-Rp0</span>
+                    </div>
+                    <div class="order-row">
+                        <strong>Total:</strong>
+                        <strong>Rp320.000</strong>
+                    </div>
+                    <select class="form-group" style="width: 100%; margin-top: 20px;">
+                        <option>Discount Voucher</option>
+                    </select>
+                </div>
+            </div>
+            <button type="button" class="next-btn" onclick="createOrder()">Create Order</button>
+        </div>
+    </div>
+
+    <script>
+        function nextStep(currentStep) {
+            // Hide all steps
+            document.querySelectorAll('.step-content').forEach(step => {
+                step.classList.remove('active');
+            });
+
+            // Remove active class from all progress steps
+            document.querySelectorAll('.progress-step').forEach(step => {
+                step.classList.remove('active');
+            });
+
+            // Show next step content
+            const nextStepNumber = currentStep + 1;
+            document.getElementById(`step${nextStepNumber}`).classList.add('active');
+
+            // Show corresponding content
+            if (nextStepNumber === 2) {
+                document.getElementById('ordering-content').classList.add('active');
+            } else if (nextStepNumber === 3) {
+                document.getElementById('payment-content').classList.add('active');
+            }
+        }
+
+        function createOrder() {
+            alert('Order created successfully!');
+            // Here you would typically submit the order to your backend
+        }
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add any initialization code here
+            // For example, populating dropdowns with data
+        });
+    </script>
+</body>
+</html>
