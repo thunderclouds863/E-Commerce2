@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: ecommerce2-demo
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
