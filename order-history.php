@@ -3,6 +3,7 @@ session_start();
 $isLoggedIn = isset($_SESSION['username']);
 if (!$isLoggedIn) {
     header("Location: login.php");
+    exit();
 }
 $servername = "localhost";
 $username = "root";
@@ -24,7 +25,6 @@ $orders_result = $stmt->get_result();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['mark_completed'])) {
     $order_id = $_POST['order_id'];
-    // Mark the order as 'Selesai'
     $update_query = "UPDATE orders SET status = 'Selesai' WHERE id = ?";
     $update_stmt = $conn->prepare($update_query);
     $update_stmt->bind_param("i", $order_id);
@@ -32,434 +32,170 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['mark_completed'])) {
     header("Location: order-history.php");
     exit;
 }
-?>
 
+$usernameDisplay = htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8');
+$avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
+
+function getStatusBadgeClass($status) {
+    $s = strtolower(trim($status));
+    if ($s === 'selesai') return 'badge-success';
+    if ($s === 'pending') return 'badge-warning';
+    if ($s === 'dikirim' || $s === 'siap dikirim' || $s === 'dikonfirmasi' || $s === 'sampai tujuan') return 'badge-info';
+    return 'badge-neutral';
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order History - AS Berkah E-Commerce</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: #f9f5f2;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            /* Full viewport height */
-        }
-
-        header {
-    padding: 20px 10%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: white;
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.logo img {
-    width: 40px;
-}
-
-nav {
-    display: flex;
-    gap: 20px;
-}
-
-nav a {
-    text-decoration: none;
-    color: #333;
-    font-weight: 500;
-    transition: color 0.3s ease;
-}
-
-nav a:hover {
-    color: #f4a460;
-}
-
-.hamburger {
-    display: none;
-    flex-direction: column;
-    cursor: pointer;
-    gap: 5px;
-}
-
-.hamburger span {
-    width: 25px;
-    height: 3px;
-    background: #333;
-}
-        .title a {
-            color: white;
-            text-decoration: none;
-            margin: 0 10px;
-            border-radius: 5px;
-            padding: 8px 12px;
-        }
-
-        .title a:hover {
-            background-color: #ff5722;
-        }
-
-        s .navbar {
-            background-color: #ff7043;
-            padding: 10px;
-            text-align: center;
-        }
-
-        .navbar a {
-            color: white;
-            padding: 12px 20px;
-            text-decoration: none;
-            margin: 0 15px;
-            border-radius: 8px;
-        }
-
-        .navbar a:hover {
-            background-color: #ff5722;
-        }
-
-        .container {
-            width: 90%;
-            max-width: 1200px;
-            margin: 20px auto;
-            flex: 1;
-            /* This ensures the container expands to take up available space */
-        }
-
-        .content {
-            background-color: #ffffff;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .order-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .order-table th,
-        .order-table td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-
-        .order-table th {
-            background-color: #f2f2f2;
-        }
-
-        .order-table td .status {
-            font-weight: bold;
-        }
-
-          /* Footer */
-    footer {
-      background: #2F4F4F;
-      color: white;
-      padding: 50px 10%;
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 30px;
-    }
-
-    footer h3 {
-      margin-bottom: 20px;
-    }
-
-    footer p,
-    footer a {
-      color: #ddd;
-      text-decoration: none;
-      display: block;
-      margin-bottom: 10px;
-    }
-
-    .newsletter input {
-      padding: 10px;
-      width: 200px;
-    }
-
-    .newsletter button {
-      padding: 10px 20px;
-      background: #f4a460;
-      border: none;
-      color: white;
-      cursor: pointer;
-    }
-
-    /* Promo Banner */
-    .promo-banner {
-      background: #2F4F4F;
-      color: white;
-      text-align: center;
-      padding: 50px;
-    }
-
-
-        .view-details-btn {
-            background-color: #ff9f1c;
-            color: white;
-            padding: 8px 15px;
-            border-radius: 5px;
-            text-decoration: none;
-            text-align: center;
-        }
-
-        .view-details-btn:hover {
-            background-color: #ff7043;
-        }
-
-        .view-details-btn {
-            background-color: #ff9f1c;
-            color: white;
-            padding: 8px 15px;
-            border-radius: 5px;
-            text-decoration: none;
-            text-align: center;
-        }
-
-        .view-details-btn:hover {
-            background-color: #ff7043;
-        }
-
-        @media (max-width: 768px) {
-    nav {
-        display: none;
-        flex-direction: column;
-        background: white;
-        position: absolute;
-        top: 100%;
-        left: 0;
-        width: 100%;
-        padding: 10px 0;
-    }
-
-    nav.show {
-        display: flex;
-    }
-
-    .hamburger {
-        display: flex;
-    }
-}
-
-/* User Menu */
-.user-menu {
-    position: relative;
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    gap: 5px;
-}
-
-.user-menu:hover .dropdown-menu {
-    display: block;
-}
-
-.user-icon {
-    font-size: 20px;
-    color: #333;
-}
-
-#username {
-    font-weight: 500;
-    color: #333;
-}
-
-.dropdown-menu {
-    display: none;
-    position: absolute;
-    top: 100%;
-    right: 0;
-    background: white;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    padding: 10px;
-    border-radius: 5px;
-    z-index: 1000;
-    text-align: left;
-}
-
-.dropdown-menu a {
-    display: block;
-    padding: 5px 10px;
-    color: #333;
-    text-decoration: none;
-    transition: background 0.2s ease;
-}
-
-.dropdown-menu a:hover {
-    background: #f4a460;
-    color: white;
-}
-
-    </style>
+    <title>Order History - Guspart Autoshop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css">
 </head>
 
 <body>
-
-<header>
-        <div class="logo">
-            <img src=gambar1.png alt="Logo">
-            <h2>Guspart Autoshop</h2>
-        </div>
-        <nav>
-            <a href="index.php">Home</a>
-            <a href="product.php">Product</a>
-            <a href="order.php">Order</a>
-            <a href="order-history.php">Order History</a>
-            <a href="#footer">Contact Us</a>
-            <div class="user-menu">
-                <?php if ($isLoggedIn): ?>
-                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown"
-                        aria-haspopup="true" aria-expanded="false">
-                        <span class="user-icon">&#128100; <?= $_SESSION['username']; ?></span>
-                    </a>
-                    <div class="dropdown-menu" aria-labelledby="navbarDropdown">
-                        <a class="dropdown-item" href="logout.php">
-                            <i class="fas fa-sign-out-alt"></i> Logout
-                        </a>
-                    </div>
-                <?php else: ?>
-                    <!-- Optionally add login link or other content for not logged in users -->
-                    <a href="login.php">Login</a>
-                <?php endif; ?>
-            </div>
-
-        </nav>
-
-        <div class="hamburger" onclick="toggleMenu()">
-            <span></span>
-            <span></span>
-            <span></span>
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="index.php" class="brand-logo">
+                <img src="gambar1.png" alt="Guspart Autoshop Logo">
+                <span class="brand-name">Guspart Autoshop</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary navigation">
+                <a href="index.php">Home</a>
+                <a href="product.php">Products</a>
+                <a href="order.php">Order</a>
+                <a href="order-history.php" class="active">Order History</a>
+                <a href="#footer">Contact Us</a>
+                <div class="user-menu">
+                    <?php if ($isLoggedIn): ?>
+                        <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+                            <span class="user-avatar"><?= $avatarInitial ?></span>
+                            <span><?= $usernameDisplay ?></span>
+                        </button>
+                        <div class="dropdown-menu">
+                            <a href="logout.php">Logout</a>
+                        </div>
+                    <?php else: ?>
+                        <a href="login.php" class="nav-cta">Login</a>
+                    <?php endif; ?>
+                </div>
+            </nav>
+            <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
         </div>
     </header>
 
-    <div class="container">
-        <div class="content">
-            <h2>Your Order History</h2>
+    <main class="page-section">
+        <div class="container">
+            <div class="section-header">
+                <div>
+                    <h1>Your Order History</h1>
+                    <p>Track the status of your recent spare part purchases and confirm deliveries.</p>
+                </div>
+                <a href="product.php" class="btn btn-primary btn-sm">Shop More Parts</a>
+            </div>
 
-            <?php
-            if ($orders_result->num_rows > 0) {
-                echo "<table class='order-table'>
-                    <thead>
-                        <tr>
-                            <th>Order ID</th>
-                            <th>Date</th>
-                            <th>Total Amount</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>";
-                while ($order = $orders_result->fetch_assoc()) {
-                    echo "<tr>
-                            <td>{$order['id']}</td>
-                            <td>{$order['created_at']}</td>
-                            <td>Rp " . number_format($order['total_amount'], 0, ',', '.') . "</td>
-                            <td><span class='status'>{$order['status']}</span></td>
-                            <td>";
-
-                    if ($order['status'] == 'Sampai Tujuan') {
-                        echo "
-                                <form method='POST'>
-                                    <input type='hidden' name='order_id' value='{$order['id']}'>
-                                    <button type='submit' name='mark_completed'>Selesai</button>
-                                </form>
-                            ";
-                    } else {
-                        echo "<a href='order-details.php?order_id={$order['id']}' class='view-details-btn'>View Details</a>";
-                        // Tambahkan tombol Review untuk pesanan dengan status "Selesai"
-                        if ($order['status'] == 'Selesai') {
-                            // Ambil product_id dari pesanan untuk link ulasan
-                            echo " <a href='product-details.php?id={$order['product_id']}' class='view-details-btn'>Review</a>";
-                        }
-                    }
-
-                    echo "</td>
-                        </tr>";
-                }
-                echo "</tbody></table>";
-            } else {
-                echo "<p>No orders found.</p>";
-            }
-            ?>
+            <div class="surface-card" style="padding: 0; overflow: hidden;">
+                <?php if ($orders_result->num_rows > 0): ?>
+                    <div class="table-responsive" style="border: none; border-radius: 0;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Date</th>
+                                    <th>Total Amount</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php while ($order = $orders_result->fetch_assoc()): ?>
+                                    <tr>
+                                        <td><strong>#<?= (int)$order['id'] ?></strong></td>
+                                        <td><?= htmlspecialchars($order['created_at']) ?></td>
+                                        <td><strong>Rp <?= number_format($order['total_amount'], 0, ',', '.') ?></strong></td>
+                                        <td>
+                                            <span class="badge <?= getStatusBadgeClass($order['status']) ?>">
+                                                <?= htmlspecialchars(ucfirst($order['status'])) ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="table-actions">
+                                                <?php if ($order['status'] == 'Sampai Tujuan'): ?>
+                                                    <form method="POST" style="display: inline;">
+                                                        <input type="hidden" name="order_id" value="<?= (int)$order['id'] ?>">
+                                                        <button type="submit" name="mark_completed" class="btn btn-success btn-sm">Mark Completed</button>
+                                                    </form>
+                                                <?php else: ?>
+                                                    <a href="order-details.php?order_id=<?= (int)$order['id'] ?>" class="btn btn-outline btn-sm">View Details</a>
+                                                    <?php if ($order['status'] == 'Selesai' && !empty($order['product_id'])): ?>
+                                                        <a href="product-details.php?id=<?= (int)$order['product_id'] ?>" class="btn btn-primary btn-sm">Review</a>
+                                                    <?php endif; ?>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <div class="empty-state">
+                        <h3>No orders yet</h3>
+                        <p>Once you complete a checkout, your order history will appear here.</p>
+                        <a href="product.php" class="btn btn-primary">Browse Products</a>
+                    </div>
+                <?php endif; ?>
+            </div>
         </div>
-    </div>
+    </main>
 
-    <footer id="footer">
-    <div>
-      <h3>Guspart Autoshop</h3>
-      <p>We've worked tirelessly to find the best suppliers to bring high-quality and reliable spare parts to your
-        garage.</p>
-    </div>
-    <div>
-      <h3>Get in touch</h3>
-      <p>123-456-7890</p>
-      <p>+123-456-7890</p>
-      <p>guspart@autoshop.com</p>
-    </div>
-    <div>
-      <h3>Useful link</h3>
-      <a href="#">Services</a>
-      <a href="#">Our team</a>
-      <a href="#">Portfolio</a>
-      <a href="#">Blog</a>
-    </div>
-    <div class="newsletter">
-      <h3>Join our newsletter</h3>
-      <p>We searched extensively for a provider that could bring,</p>
-      <input type="email" placeholder="Enter your email">
-      <button>Subscribe</button>
-    </div>
-  </footer>
-<script>
-function toggleMenu() {
-    const nav = document.querySelector('nav');
-    nav.classList.toggle('show');
-}
+    <footer class="site-footer" id="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div>
+                    <h3>Guspart Autoshop</h3>
+                    <p>We've worked tirelessly to find the best suppliers to bring high-quality and reliable spare parts to your garage.</p>
+                </div>
+                <div>
+                    <h3>Get in Touch</h3>
+                    <p>123-456-7890</p>
+                    <p>+123-456-7890</p>
+                    <p>guspart@autoshop.com</p>
+                </div>
+                <div>
+                    <h3>Quick Links</h3>
+                    <a href="index.php">Home</a>
+                    <a href="product.php">Products</a>
+                    <a href="order.php">Shopping Cart</a>
+                    <a href="order-history.php">Order History</a>
+                </div>
+                <div>
+                    <h3>Join Our Newsletter</h3>
+                    <p>Get notified about new spare part arrivals and weekend promos.</p>
+                    <form class="newsletter-form" onsubmit="event.preventDefault();">
+                        <input type="email" placeholder="Enter your email" aria-label="Email address">
+                        <button type="submit" class="btn btn-primary btn-sm">Subscribe</button>
+                    </form>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                &copy; 2024 Guspart Autoshop. All Rights Reserved.
+            </div>
+        </div>
+    </footer>
 
-// Add smooth scrolling
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        document.querySelector(this.getAttribute('href')).scrollIntoView({
-            behavior: 'smooth'
-        });
-    });
-});
-
-// Sticky header
-window.onscroll = function () {
-    if (window.pageYOffset > 50) {
-        document.querySelector('header').style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-    } else {
-        document.querySelector('header').style.boxShadow = 'none';
-    }
-};
-</script>
-
+    <script src="assets/js/main.js"></script>
 </body>
 
-
 </html>
-
 <?php
 $conn->close();
 ?>
