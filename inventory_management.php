@@ -16,34 +16,28 @@ if ($conn->connect_error) {
   die("Connection failed: " . $conn->connect_error);
 }
 
-// Function for uploading images
 function uploadImage($image)
 {
     $targetDir = "uploads/";
     $imageFileType = strtolower(pathinfo($image["name"], PATHINFO_EXTENSION));
     $allowedTypes = ["jpg", "jpeg", "png"];
 
-    // Check if the file type is allowed
     if (!in_array($imageFileType, $allowedTypes)) {
         return "error_type";
     }
 
-    // Check file size (max 2MB)
     if ($image["size"] > 2 * 1024 * 1024) {
         return "error_size";
     }
 
-    // Generate a unique file name (produk1, produk2, ...)
     $i = 1;
     $targetFile = $targetDir . "produk" . $i . "." . $imageFileType;
 
-    // Check if a file with the generated name already exists, if so, increment the number
     while (file_exists($targetFile)) {
         $i++;
         $targetFile = $targetDir . "produk" . $i . "." . $imageFileType;
     }
 
-    // Move the uploaded file to the target directory
     if (move_uploaded_file($image["tmp_name"], $targetFile)) {
         return $targetFile;
     }
@@ -51,7 +45,6 @@ function uploadImage($image)
     return "error_upload";
 }
 
-// Handle POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if (isset($_POST['action'])) {
     $action = $_POST['action'];
@@ -101,302 +94,201 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   }
 }
 
-// Fetch products
 $products = $conn->query("SELECT * FROM products");
+$usernameDisplay = htmlspecialchars($_SESSION['username'] ?? 'Admin', ENT_QUOTES, 'UTF-8');
+$avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Inventory Management</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-  <style>
-  body {
-    font-family: 'Poppins', sans-serif;
-    background-color: #1e1e2f;
-    color: #ffffff;
-    margin: 0;
-    padding: 0;
-  }
-
-  h1,
-  h2 {
-    text-align: center;
-    color: #e91e63;
-    margin-top: 20px;
-  }
-
-  nav {
-    background-color: #282c34;
-    padding: 15px 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  }
-
-  nav ul {
-    display: flex;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  nav ul li {
-    margin: 0 10px;
-  }
-
-  nav ul li a {
-    color: #ffffff;
-    text-decoration: none;
-    font-weight: bold;
-    padding: 8px 12px;
-    border-radius: 5px;
-    transition: background-color 0.3s ease, transform 0.3s ease;
-  }
-
-  nav ul li a:hover {
-    background-color: #e91e63;
-    transform: scale(1.05);
-  }
-
-  nav div a {
-    color: #ffffff;
-    text-decoration: none;
-    font-weight: bold;
-    padding: 8px 12px;
-    border-radius: 5px;
-    transition: background-color 0.3s ease, transform 0.3s ease;
-  }
-
-  nav div a:hover {
-    background-color: #e91e63;
-    transform: scale(1.05);
-  }
-
-  .container {
-    padding: 30px;
-    background-color: #25293c;
-    border-radius: 10px;
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
-    margin: 20px auto;
-    max-width: 900px;
-  }
-
-  button {
-    background-color: #4caf50;
-    color: #ffffff;
-    padding: 10px 15px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 16px;
-    transition: background-color 0.3s ease, transform 0.2s ease;
-  }
-
-  button:hover {
-    background-color: #388e3c;
-    transform: translateY(-2px);
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 20px 0;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-
-  table th,
-  table td {
-    padding: 15px;
-    text-align: center;
-    border: 1px solid #3a3f54;
-  }
-
-  table th {
-    background-color: #3a3f54;
-    color: #e91e63;
-    font-weight: bold;
-  }
-
-  table td {
-    background-color: #2c3045;
-    color: #ffffff;
-  }
-
-  /* Popup Styles */
-  .popup {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.7);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-  }
-
-  .popup.active {
-    display: flex;
-  }
-
-  .popup-content {
-    background-color: #2c3045;
-    padding: 30px;
-    border-radius: 10px;
-    text-align: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    width: 400px;
-  }
-
-  .popup-content h3 {
-    color: #e91e63;
-    margin-bottom: 20px;
-  }
-
-  .popup-content label {
-    display: block;
-    text-align: left;
-    margin: 10px 0;
-    color: #ffffff;
-  }
-
-  .popup-content input,
-  .popup-content textarea {
-    width: 100%;
-    padding: 10px;
-    margin: 5px 0 15px;
-    border: 1px solid #3a3f54;
-    border-radius: 5px;
-    background-color: #25293c;
-    color: #ffffff;
-  }
-
-  .popup-content button {
-    margin-top: 10px;
-  }
-
-  footer {
-    background-color: #282c34;
-    color: #ffffff;
-    text-align: center;
-    padding: 15px;
-    position: fixed;
-    bottom: 0;
-    width: 100%;
-    box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.2);
-  }
-</style>
-
+  <title>Inventory Management - Guspart Autoshop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
 </head>
 
 <body>
-<nav>
-<div class="logo">
-            <img src=logo.png alt="Logo">
-            <a href="admin_dashboard.php">Admin Dashboard</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="admin_dashboard.php" class="brand-logo">
+        <img src="gambar1.png" alt="Guspart Autoshop Logo">
+        <span class="brand-name">Guspart Autoshop</span>
+        <span class="brand-badge">Admin</span>
+      </a>
+      <nav class="site-nav" aria-label="Admin navigation">
+        <a href="admin_dashboard.php">Dashboard</a>
+        <a href="order-management.php">Order Management</a>
+        <a href="inventory_management.php" class="active">Inventory Management</a>
+        <div class="user-menu">
+          <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+            <span class="user-avatar"><?= $avatarInitial ?></span>
+            <span><?= $usernameDisplay ?></span>
+          </button>
+          <div class="dropdown-menu">
+            <a href="logout.php">Logout</a>
+          </div>
         </div>
-    <ul>
-      <li><a href="admin_dashboard.php">Home</a></li>
-      <li><a href="inventory_management.php">Inventory Management</a></li>
-      <li><a href="order-management.php">Order Management</a></li>
-      <li><a href="logout.php">Logout</a></li>
-    </ul>
-  </nav>
+      </nav>
+      <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
+  </header>
 
-  <main>
+  <main class="page-section">
     <div class="container">
-      <h2>Inventory Management</h2>
-
-      <button onclick="togglePopup('add')">Add Product</button>
-
-      <!-- Add Product Popup -->
-      <div class="popup" id="popup-add">
-        <div class="popup-content">
-          <h3>Add Product</h3>
-          <form method="POST" enctype="multipart/form-data">
-            <input type="hidden" name="action" value="add_product">
-            <label>Name: <input type="text" name="name" required></label>
-            <label>Description: <textarea name="description" required></textarea></label>
-            <label>Price: <input type="number" name="price" step="0.01" required></label>
-            <label>Stock: <input type="number" name="stock" required></label>
-            <label>Image: <input type="file" name="image" accept="image/*"></label>
-            <button type="submit">Save Product</button>
-            <button type="button" onclick="togglePopup('add')" style="background-color: red;">Close</button>
-          </form>
+      <div class="section-header">
+        <div>
+          <h1>Inventory Management</h1>
+          <p>Add, edit, and maintain spare part stock and pricing.</p>
         </div>
+        <button type="button" class="btn btn-primary" onclick="togglePopup('add')">+ Add Product</button>
       </div>
 
-      <!-- Edit Product Popup -->
-      <div class="popup" id="popup-edit">
-        <div class="popup-content">
-          <h3>Edit Product</h3>
-          <form method="POST" enctype="multipart/form-data">
-            <input type="hidden" name="action" value="edit_product">
-            <input type="hidden" name="id" id="edit-id">
-            <label>Name: <input type="text" name="name" id="edit-name" required></label>
-            <label>Description: <textarea name="description" id="edit-description" required></textarea></label>
-            <label>Price: <input type="number" name="price" id="edit-price" step="0.01" required></label>
-            <label>Stock: <input type="number" name="stock" id="edit-stock" required></label>
-            <input type="hidden" name="existing_image" id="edit-existing-image">
-            <label>Image: <input type="file" name="image" accept="image/*"></label>
-            <button type="submit">Save Changes</button>
-            <button type="button" onclick="togglePopup('edit')" style="background-color: red;">Close</button>
-          </form>
+      <div class="surface-card" style="padding: 0; overflow: hidden;">
+        <div class="table-responsive" style="border: none; border-radius: 0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Product</th>
+                <th>Description</th>
+                <th>Price</th>
+                <th>Stock</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php while ($product = $products->fetch_assoc()): ?>
+                <?php
+                $imgPath = $product['image'];
+                if ($imgPath && !file_exists($imgPath) && file_exists('uploads/' . $imgPath)) {
+                  $imgPath = 'uploads/' . $imgPath;
+                }
+                ?>
+                <tr>
+                  <td><strong>#<?= (int)$product['id'] ?></strong></td>
+                  <td>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                      <?php if ($imgPath && file_exists($imgPath)): ?>
+                        <img class="table-thumb" src="<?= htmlspecialchars($imgPath) ?>" alt="<?= htmlspecialchars($product['name']) ?>">
+                      <?php endif; ?>
+                      <strong><?= htmlspecialchars($product['name']) ?></strong>
+                    </div>
+                  </td>
+                  <td style="color: var(--text-secondary); max-width: 280px;"><?= htmlspecialchars($product['description']) ?></td>
+                  <td style="white-space: nowrap;"><strong>Rp <?= number_format($product['price'], 0, ',', '.') ?></strong></td>
+                  <td>
+                    <span class="badge <?= ((int)$product['stock'] <= 10) ? 'badge-warning' : 'badge-success' ?>">
+                      <?= (int)$product['stock'] ?> pcs
+                    </span>
+                  </td>
+                  <td>
+                    <div class="table-actions">
+                      <button type="button" class="btn btn-outline btn-sm" onclick='editProduct(<?= htmlspecialchars(json_encode($product), ENT_QUOTES, "UTF-8") ?>)'>Edit</button>
+                      <form method="POST" style="display: inline;" onsubmit="return confirm('Delete this product?');">
+                        <input type="hidden" name="action" value="delete_product">
+                        <input type="hidden" name="id" value="<?= (int)$product['id'] ?>">
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <?php endwhile; ?>
+            </tbody>
+          </table>
         </div>
       </div>
-
-      <!-- Product List -->
-      <h3>Product List</h3>
-      <table>
-        <tr>
-          <th>ID</th>
-          <th>Name</th>
-          <th>Description</th>
-          <th>Price</th>
-          <th>Stock</th>
-          <th>Image</th>
-          <th>Action</th>
-        </tr>
-        <?php while ($product = $products->fetch_assoc()): ?>
-          <tr>
-            <td><?= $product['id'] ?></td>
-            <td><?= $product['name'] ?></td>
-            <td><?= $product['description'] ?></td>
-            <td><?= $product['price'] ?></td>
-            <td><?= $product['stock'] ?></td>
-            <td>
-              <?php if ($product['image']): ?>
-                <img src="<?= $product['image'] ?>" alt="Product Image" style="max-width: 100px;">
-              <?php endif; ?>
-            </td>
-            <td>
-              <button onclick="editProduct(<?= htmlspecialchars(json_encode($product)) ?>)">Edit</button>
-              <form method="POST" style="display: inline;">
-                <input type="hidden" name="action" value="delete_product">
-                <input type="hidden" name="id" value="<?= $product['id'] ?>">
-                <button type="submit" style="background-color: red;">Delete</button>
-              </form>
-            </td>
-
-          </tr>
-        <?php endwhile; ?>
-      </table>
     </div>
   </main>
-  <footer>
-    <p>&copy; 2024 Gushpart Autoshop. All Rights Reserved.</p>
+
+  <!-- Add Product Modal -->
+  <div class="popup" id="popup-add" role="dialog" aria-modal="true" aria-labelledby="add-modal-title">
+    <div class="popup-content">
+      <div class="popup-header">
+        <h3 id="add-modal-title">Add New Product</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="togglePopup('add')" aria-label="Close">&times;</button>
+      </div>
+      <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="add_product">
+        <div class="form-group">
+          <label for="add-name">Product Name</label>
+          <input id="add-name" type="text" name="name" required>
+        </div>
+        <div class="form-group">
+          <label for="add-description">Description</label>
+          <textarea id="add-description" name="description" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="add-price">Price (Rp)</label>
+          <input id="add-price" type="number" name="price" step="0.01" required>
+        </div>
+        <div class="form-group">
+          <label for="add-stock">Stock</label>
+          <input id="add-stock" type="number" name="stock" required>
+        </div>
+        <div class="form-group">
+          <label for="add-image">Product Image</label>
+          <input id="add-image" type="file" name="image" accept="image/*">
+        </div>
+        <div class="popup-actions">
+          <button type="button" class="btn btn-outline" onclick="togglePopup('add')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Product</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Product Modal -->
+  <div class="popup" id="popup-edit" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+    <div class="popup-content">
+      <div class="popup-header">
+        <h3 id="edit-modal-title">Edit Product</h3>
+        <button type="button" class="btn btn-outline btn-sm" onclick="togglePopup('edit')" aria-label="Close">&times;</button>
+      </div>
+      <form method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="edit_product">
+        <input type="hidden" name="id" id="edit-id">
+        <input type="hidden" name="existing_image" id="edit-existing-image">
+        <div class="form-group">
+          <label for="edit-name">Product Name</label>
+          <input type="text" name="name" id="edit-name" required>
+        </div>
+        <div class="form-group">
+          <label for="edit-description">Description</label>
+          <textarea name="description" id="edit-description" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="edit-price">Price (Rp)</label>
+          <input type="number" name="price" id="edit-price" step="0.01" required>
+        </div>
+        <div class="form-group">
+          <label for="edit-stock">Stock</label>
+          <input type="number" name="stock" id="edit-stock" required>
+        </div>
+        <div class="form-group">
+          <label for="edit-image">Replace Image (optional)</label>
+          <input id="edit-image" type="file" name="image" accept="image/*">
+        </div>
+        <div class="popup-actions">
+          <button type="button" class="btn btn-outline" onclick="togglePopup('edit')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <footer class="portal-footer">
+    &copy; 2024 Guspart Autoshop. All Rights Reserved.
   </footer>
 
+  <script src="assets/js/main.js"></script>
   <script>
     function togglePopup(type) {
       const popupAdd = document.getElementById('popup-add');
@@ -411,7 +303,7 @@ $products = $conn->query("SELECT * FROM products");
       document.getElementById('edit-description').value = product.description;
       document.getElementById('edit-price').value = product.price;
       document.getElementById('edit-stock').value = product.stock;
-      document.getElementById('edit-existing-image').value = product.image;
+      document.getElementById('edit-existing-image').value = product.image || '';
       togglePopup('edit');
     }
   </script>

@@ -16,13 +16,11 @@ if ($conn->connect_error) {
   die("Connection failed: " . $conn->connect_error);
 }
 
-// Handle POST Requests for approving, rejecting, and deleting users
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
   if (isset($_POST['action']) && isset($_POST['user_id'])) {
     $user_id = $_POST['user_id'];
     $action = $_POST['action'];
 
-    // Ensure that the action is valid to prevent potential issues
     $valid_actions = ['approve_user', 'reject_user', 'delete_user'];
     if (in_array($action, $valid_actions)) {
       switch ($action) {
@@ -50,288 +48,193 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
           break;
       }
     } else {
-      // Invalid action
       echo "Invalid action.";
     }
   }
 }
 
-// Fetch users with different statuses and roles
 $pending_users = $conn->query("SELECT * FROM users WHERE status = 'pending'");
 $customers = $conn->query("SELECT * FROM users WHERE role = 'customer' AND status = 'approved'");
 $employees = $conn->query("SELECT * FROM users WHERE role = 'admin' AND status = 'approved'");
 $couriers = $conn->query("SELECT * FROM users WHERE role = 'courier' AND status = 'approved'");
 
+$usernameDisplay = htmlspecialchars($_SESSION['username'] ?? 'Owner', ENT_QUOTES, 'UTF-8');
+$avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Dashboard</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-  <style>
-    /* Global Styles */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-      font-family: 'Poppins', sans-serif;
-    }
-
-    body {
-      background-color: #f7f7f7;
-      color: #333;
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
-    }
-
-    header {
-      background-color: #3a4e7f;
-      color: #fff;
-      padding: 20px;
-      text-align: center;
-      font-size: 24px;
-      font-weight: bold;
-    }
-
-    nav {
-      display: flex;
-      justify-content: center;
-      background-color: #5c6bc0;
-      padding: 10px;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    }
-
-    nav a {
-      color: white;
-      text-decoration: none;
-      padding: 10px 20px;
-      margin: 0 15px;
-      font-size: 16px;
-      font-weight: bold;
-      transition: background-color 0.3s ease;
-    }
-
-    nav a:hover {
-      background-color: #3a4e7f;
-      border-radius: 5px;
-    }
-
-    .content {
-      flex-grow: 1;
-      padding: 30px;
-      background-color: #fff;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    .content h2 {
-      text-align: center;
-      margin-bottom: 20px;
-      color: #3a4e7f;
-    }
-
-    .content h3 {
-      color: #3a4e7f;
-      font-size: 20px;
-      margin-bottom: 10px;
-    }
-
-    .table-container {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 20px;
-      background-color: #ffffff;
-      padding: 20px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-      border-radius: 8px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    table th,
-    table td {
-      padding: 12px;
-      border: 1px solid #e0e0e0;
-      text-align: left;
-    }
-
-    table th {
-      background-color: #5c6bc0;
-      color: white;
-    }
-
-    table tr:nth-child(even) {
-      background-color: #f9f9f9;
-    }
-
-    table button {
-      background-color: #4caf50;
-      color: white;
-      padding: 8px 12px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color 0.3s ease;
-    }
-
-    table button:hover {
-      background-color: #388e3c;
-    }
-
-    table .reject {
-      background-color: #f44336;
-    }
-
-    table .reject:hover {
-      background-color: #d32f2f;
-    }
-
-    footer {
-      background-color: #3a4e7f;
-      color: white;
-      text-align: center;
-      padding: 15px;
-      font-size: 14px;
-      position: relative;
-      bottom: 0;
-      width: 100%;
-    }
-
-    /* Media Queries for Responsiveness */
-    @media (max-width: 768px) {
-      .content {
-        grid-template-columns: 1fr;
-      }
-
-      nav {
-        flex-direction: column;
-      }
-
-      .table-container {
-        padding: 15px;
-      }
-    }
-  </style>
+  <title>User Management - Guspart Autoshop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
 </head>
 
 <body>
-  <header>
-    Owner Dashboard
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="owner_dashboard.php" class="brand-logo">
+        <img src="gambar1.png" alt="Guspart Autoshop Logo">
+        <span class="brand-name">Guspart Autoshop</span>
+        <span class="brand-badge">Owner</span>
+      </a>
+      <nav class="site-nav" aria-label="Owner navigation">
+        <a href="owner_dashboard.php">Dashboard</a>
+        <a href="management-user.php" class="active">User Management</a>
+        <a href="report.php">Sales Report</a>
+        <div class="user-menu">
+          <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+            <span class="user-avatar"><?= $avatarInitial ?></span>
+            <span><?= $usernameDisplay ?></span>
+          </button>
+          <div class="dropdown-menu">
+            <a href="logout.php">Logout</a>
+          </div>
+        </div>
+      </nav>
+      <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+    </div>
   </header>
 
-  <nav>
-    <a href="owner_dashboard.php">Home</a>
-    <a href="management-user.php">User Management</a>
-    <a href="report.php">Report</a>
-    <a href="logout.php">Logout</a>
-  </nav>
+  <main class="page-section">
+    <div class="container">
+      <div class="section-header">
+        <div>
+          <h1>User Management</h1>
+          <p>Approve pending registrations and review active accounts by role.</p>
+        </div>
+      </div>
 
-  <div class="content">
-    <div class="table-container">
-      <h3>Pending Users</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Username</th>
-            <th>Role</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php while ($user = $pending_users->fetch_assoc()): ?>
-            <tr>
-              <td><?= $user['id'] ?></td>
-              <td><?= $user['username'] ?></td>
-              <td><?= $user['role'] ?></td>
-              <td>
-                <form method="POST" style="display:inline;">
-                  <input type="hidden" name="user_id" value="<?= $user['id'] ?>">
-                  <button type="submit" name="action" value="approve_user">Approve</button>
-                </form>
-                <form method="POST" style="display:inline;">
-                  <input type="hidden" name="user_id" value="<?= $user['id'] ?>">
-                  <button type="submit" name="action" value="reject_user" class="reject">Reject</button>
-                </form>
-              </td>
-            </tr>
-          <?php endwhile; ?>
-        </tbody>
-      </table>
+      <div class="portal-grid-2">
+        <div class="surface-card">
+          <h2 style="font-size: 1.25rem; color: var(--primary); margin-bottom: 16px;">Pending Approvals</h2>
+          <div class="table-responsive">
+            <table class="data-table" style="min-width: 360px;">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php if ($pending_users->num_rows > 0): ?>
+                  <?php while ($user = $pending_users->fetch_assoc()): ?>
+                    <tr>
+                      <td><strong>#<?= (int)$user['id'] ?></strong></td>
+                      <td><?= htmlspecialchars($user['username']) ?></td>
+                      <td><span class="badge badge-warning"><?= htmlspecialchars(ucfirst($user['role'])) ?></span></td>
+                      <td>
+                        <div class="table-actions">
+                          <form method="POST" style="display:inline;">
+                            <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
+                            <button type="submit" name="action" value="approve_user" class="btn btn-success btn-sm">Approve</button>
+                          </form>
+                          <form method="POST" style="display:inline;">
+                            <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
+                            <button type="submit" name="action" value="reject_user" class="btn btn-danger btn-sm">Reject</button>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  <?php endwhile; ?>
+                <?php else: ?>
+                  <tr>
+                    <td colspan="4" style="text-align: center; color: var(--text-muted); padding: 28px;">No pending user requests.</td>
+                  </tr>
+                <?php endif; ?>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="surface-card" style="display: flex; flex-direction: column; gap: 22px;">
+          <h2 style="font-size: 1.25rem; color: var(--primary);">Active Users</h2>
+
+          <div>
+            <h3 style="font-size: 1rem; color: var(--text-secondary); margin-bottom: 10px;">Customers</h3>
+            <div class="table-responsive">
+              <table class="data-table" style="min-width: 260px;">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php while ($customer = $customers->fetch_assoc()): ?>
+                    <tr>
+                      <td>#<?= (int)$customer['id'] ?></td>
+                      <td><strong><?= htmlspecialchars($customer['username']) ?></strong></td>
+                    </tr>
+                  <?php endwhile; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h3 style="font-size: 1rem; color: var(--text-secondary); margin-bottom: 10px;">Admins</h3>
+            <div class="table-responsive">
+              <table class="data-table" style="min-width: 260px;">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php while ($employee = $employees->fetch_assoc()): ?>
+                    <tr>
+                      <td>#<?= (int)$employee['id'] ?></td>
+                      <td><strong><?= htmlspecialchars($employee['username']) ?></strong></td>
+                    </tr>
+                  <?php endwhile; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <h3 style="font-size: 1rem; color: var(--text-secondary); margin-bottom: 10px;">Couriers</h3>
+            <div class="table-responsive">
+              <table class="data-table" style="min-width: 260px;">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php while ($courier = $couriers->fetch_assoc()): ?>
+                    <tr>
+                      <td>#<?= (int)$courier['id'] ?></td>
+                      <td><strong><?= htmlspecialchars($courier['username']) ?></strong></td>
+                    </tr>
+                  <?php endwhile; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
+  </main>
 
-    <!-- Active Users (Customers, Employees, Couriers) -->
-    <div class="table-container">
-      <h3>Active Users</h3>
-
-      <h4>Customers</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Username</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php while ($customer = $customers->fetch_assoc()): ?>
-            <tr>
-              <td><?= $customer['id'] ?></td>
-              <td><?= $customer['username'] ?></td>
-            </tr>
-          <?php endwhile; ?>
-        </tbody>
-      </table>
-
-      <h4>Admins</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Username</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php while ($employee = $employees->fetch_assoc()): ?>
-            <tr>
-              <td><?= $employee['id'] ?></td>
-              <td><?= $employee['username'] ?></td>
-            </tr>
-          <?php endwhile; ?>
-        </tbody>
-      </table>
-
-      <h4>Couriers</h4>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Username</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php while ($courier = $couriers->fetch_assoc()): ?>
-            <tr>
-              <td><?= $courier['id'] ?></td>
-              <td><?= $courier['username'] ?></td>
-            </tr>
-          <?php endwhile; ?>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <footer>
-    <p>&copy; 2024 Burjo Restaurant. All Rights Reserved.</p>
+  <footer class="portal-footer">
+    &copy; 2024 Guspart Autoshop. All Rights Reserved.
   </footer>
+
+  <script src="assets/js/main.js"></script>
 </body>
 
 </html>

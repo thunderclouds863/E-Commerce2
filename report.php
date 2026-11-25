@@ -15,7 +15,6 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// Fetch completed orders
 $sql = "SELECT * FROM orders WHERE status = 'Selesai'";
 $result = $conn->query($sql);
 
@@ -26,7 +25,6 @@ if ($result->num_rows > 0) {
     while ($order = $result->fetch_assoc()) {
         $total_sales += $order['total_amount'];
 
-        // Process sales by month
         $order_month = date('Y-m', strtotime($order['created_at']));
         if (!isset($monthly_sales[$order_month])) {
             $monthly_sales[$order_month] = 0;
@@ -36,224 +34,150 @@ if ($result->num_rows > 0) {
 
     $result->data_seek(0);
 }
-?>
 
+$usernameDisplay = htmlspecialchars($_SESSION['username'] ?? 'Owner', ENT_QUOTES, 'UTF-8');
+$avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
+?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Owner Report</title>
+    <title>Sales Report - Guspart Autoshop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
-
+    <link rel="stylesheet" href="assets/css/style.css">
     <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-            background-color: #121212;
-            color: #e4e4e4;
+        /* Keep Bootstrap utilities harmonious with Guspart design tokens */
+        .chart-canvas-wrap {
+            position: relative;
+            width: 100%;
+            height: 320px;
         }
 
-        header {
-            background-color: #1a1a1a;
-            color: #ffffff;
-            padding: 30px 0;
-            text-align: center;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
-        }
-
-        header a {
-            color: #ffffff;
-            text-decoration: none;
-            font-weight: bold;
-            margin-right: 25px;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-
-        header a:hover {
-            background-color: #333333;
-        }
-
-        .container {
-            margin-top: 40px;
-        }
-
-        .info-card {
-            background-color: #1f1f1f;
-            padding: 35px;
-            border-radius: 12px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
-            margin-bottom: 30px;
-        }
-
-        .info-card h2 {
-            margin-bottom: 15px;
-            font-size: 1.8rem;
-            color: #ffa500;
-        }
-
-        .info-card p {
-            font-size: 1.3rem;
-        }
-
-        .table-wrapper {
-            background-color: #1f1f1f;
-            border-radius: 12px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
-            padding: 35px;
-        }
-
-        .table th, .table td {
-            background-color: lightgrey;
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #444;
-        }
-
-        .table th {
-            background-color: #333333;
-            color: #ffffff;
-        }
-
-        .btn-info {
-            background-color: #ffa500;
-            border: none;
-            padding: 10px 25px;
-            font-size: 1rem;
-            color: #121212;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.3s ease;
-        }
-
-        .btn-info:hover {
-            background-color: #ff8c00;
+        .dataTables_wrapper .row {
+            margin-bottom: 12px;
         }
 
         .modal-header {
-            background-color: #333333;
-            color: #ffffff;
+            background-color: var(--primary);
+            color: #fff;
         }
 
-        .modal-body {
-            font-size: 1.2rem;
-            color: #333;
+        .modal-header .btn-close {
+            filter: invert(1);
         }
 
-        footer {
-            background-color: #1a1a1a;
-            color: #ffffff;
-            padding: 25px 0;
-            text-align: center;
-            margin-top: 40px;
-            font-size: 0.9rem;
+        .modal-body h5 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            margin-top: 16px;
+            margin-bottom: 6px;
         }
 
-        .footer-link {
-            color: #ffa500;
-            text-decoration: none;
-        }
-
-        .footer-link:hover {
-            text-decoration: underline;
-        }
-
-        @media (max-width: 768px) {
-            header {
-                padding: 20px;
-            }
-
-            .info-card {
-                padding: 25px;
-            }
-
-            .table-wrapper {
-                padding: 25px;
-            }
-
-            .btn-info {
-                padding: 8px 20px;
-                font-size: 0.9rem;
-            }
-        }
-
-        .chart-container {
-            background-color: #1f1f1f;
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 30px;
-            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
-        }
-
-        .chart-title {
-            color: #ffa500;
-            text-align: center;
-            margin-bottom: 20px;
+        .modal-body h5:first-child {
+            margin-top: 0;
         }
     </style>
 </head>
 
 <body>
-    <header>
-        <div><a href="owner_dashboard.php">Owner Dashboard</a></div>
-        <h1>Sales Report</h1>
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="owner_dashboard.php" class="brand-logo">
+                <img src="gambar1.png" alt="Guspart Autoshop Logo">
+                <span class="brand-name">Guspart Autoshop</span>
+                <span class="brand-badge">Owner</span>
+            </a>
+            <nav class="site-nav" aria-label="Owner navigation">
+                <a href="owner_dashboard.php">Dashboard</a>
+                <a href="management-user.php">User Management</a>
+                <a href="report.php" class="active">Sales Report</a>
+                <div class="user-menu">
+                    <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+                        <span class="user-avatar"><?= $avatarInitial ?></span>
+                        <span><?= $usernameDisplay ?></span>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a href="logout.php">Logout</a>
+                    </div>
+                </div>
+            </nav>
+            <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
     </header>
 
-    <div class="container mt-5">
-        <!-- Sales Summary -->
-        <div class="row">
-            <div class="col-lg-6 col-md-12 mb-4">
-                <div class="info-card text-center">
-                    <h2>Total Orders Completed</h2>
-                    <p class="fs-3"><?php echo $result->num_rows; ?></p>
+    <main class="page-section">
+        <div class="container">
+            <div class="section-header">
+                <div>
+                    <h1>Sales Report</h1>
+                    <p>Summary of completed orders and monthly revenue performance.</p>
+                </div>
+                <a href="owner_dashboard.php" class="btn btn-outline btn-sm">&larr; Back to Dashboard</a>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Orders Completed</div>
+                    <div class="stat-value"><?= (int)$result->num_rows ?></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Sales Revenue</div>
+                    <div class="stat-value accent">Rp <?= number_format($total_sales, 0, ',', '.') ?></div>
                 </div>
             </div>
-            <div class="col-lg-6 col-md-12 mb-4">
-                <div class="info-card text-center">
-                    <h2>Total Sales</h2>
-                    <p class="text-success fs-3">Rp <?php echo number_format($total_sales, 0, ',', '.'); ?></p>
+
+            <div class="surface-card" style="margin-bottom: 28px;">
+                <h2 style="font-size: 1.25rem; color: var(--primary); margin-bottom: 18px;">Monthly Sales Overview</h2>
+                <div class="chart-canvas-wrap">
+                    <canvas id="salesChart"></canvas>
+                </div>
+            </div>
+
+            <div class="surface-card">
+                <h2 style="font-size: 1.25rem; color: var(--primary); margin-bottom: 18px;">Completed Orders</h2>
+                <div class="table-responsive" style="border: none;">
+                    <table id="salesTable" class="table data-table">
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>Date</th>
+                                <th>Total Amount</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php while ($order = $result->fetch_assoc()): ?>
+                                <tr>
+                                    <td><strong>#<?= (int)$order['id'] ?></strong></td>
+                                    <td><?= htmlspecialchars($order['created_at']) ?></td>
+                                    <td><strong>Rp <?= number_format($order['total_amount'], 0, ',', '.') ?></strong></td>
+                                    <td>
+                                        <button type="button" class="btn btn-primary btn-sm view-details" data-order-id="<?= (int)$order['id'] ?>">View Details</button>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
-
-        <!-- Sales Chart -->
-        <div class="chart-container">
-            <h3 class="chart-title">Monthly Sales Overview</h3>
-            <canvas id="salesChart"></canvas>
-        </div>
-
-        <!-- Orders Table -->
-        <div class="table-wrapper">
-            <table id="salesTable" class="table">
-                <thead>
-                    <tr>
-                        <th>Order ID</th>
-                        <th>Date</th>
-                        <th>Total Amount</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php while ($order = $result->fetch_assoc()) { ?>
-                        <tr>
-                            <td><?php echo $order['id']; ?></td>
-                            <td><?php echo $order['created_at']; ?></td>
-                            <td>Rp <?php echo number_format($order['total_amount'], 0, ',', '.'); ?></td>
-                            <td>
-                                <button class="btn-info view-details" data-order-id="<?php echo $order['id']; ?>">View Details</button>
-                            </td>
-                        </tr>
-                    <?php } ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
+    </main>
 
     <!-- Detail Modal -->
     <div class="modal fade" id="detailModal" tabindex="-1" aria-labelledby="detailModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="detailModalLabel">Order Details</h5>
@@ -262,19 +186,19 @@ if ($result->num_rows > 0) {
                 <div class="modal-body">
                     <h5>Customer Information</h5>
                     <p id="customerInfo"></p>
-                    <h5>Order Details</h5>
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Product Name</th>
-                                <th>Quantity</th>
-                                <th>Price</th>
-                            </tr>
-                        </thead>
-                        <tbody id="orderDetails">
-                            <!-- AJAX-loaded content -->
-                        </tbody>
-                    </table>
+                    <h5>Order Items</h5>
+                    <div class="table-responsive">
+                        <table class="table data-table" style="min-width: 360px;">
+                            <thead>
+                                <tr>
+                                    <th>Product Name</th>
+                                    <th>Quantity</th>
+                                    <th>Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orderDetails"></tbody>
+                        </table>
+                    </div>
                     <h5>Shipping Address</h5>
                     <p id="shippingAddress"></p>
                     <h5>Payment Method</h5>
@@ -284,7 +208,11 @@ if ($result->num_rows > 0) {
         </div>
     </div>
 
-    <!-- Bootstrap & DataTables Scripts -->
+    <footer class="portal-footer">
+        &copy; 2024 Guspart Autoshop. All Rights Reserved.
+    </footer>
+
+    <script src="assets/js/main.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
@@ -295,7 +223,6 @@ if ($result->num_rows > 0) {
         $(document).ready(function () {
             $('#salesTable').DataTable();
 
-            // Handle "View Details" button click
             $('.view-details').on('click', function () {
                 const orderId = $(this).data('order-id');
                 $.ajax({
@@ -324,31 +251,38 @@ if ($result->num_rows > 0) {
                 });
             });
 
-            // Chart.js - Monthly Sales Chart
             const ctx = document.getElementById('salesChart').getContext('2d');
-            const salesChart = new Chart(ctx, {
+            new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: <?php echo json_encode(array_keys($monthly_sales)); ?>,
                     datasets: [{
                         label: 'Total Sales (Rp)',
                         data: <?php echo json_encode(array_values($monthly_sales)); ?>,
-                        borderColor: '#ffa500',
-                        backgroundColor: 'rgba(255, 165, 0, 0.3)',
-                        borderWidth: 2,
+                        borderColor: '#D97736',
+                        backgroundColor: 'rgba(217, 119, 54, 0.16)',
+                        borderWidth: 2.5,
+                        pointBackgroundColor: '#1B3B3C',
+                        tension: 0.25,
                         fill: true
                     }]
                 },
                 options: {
-                    responsive: false, // Disable dynamic resizing
-                    maintainAspectRatio: true,
-                    aspectRatio: 2, // Fixed aspect ratio
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#152226' }
+                        }
+                    },
                     scales: {
                         x: {
-                            ticks: { color: '#e4e4e4' }
+                            ticks: { color: '#4B5D63' },
+                            grid: { color: '#E1E7EA' }
                         },
                         y: {
-                            ticks: { color: '#e4e4e4' }
+                            ticks: { color: '#4B5D63' },
+                            grid: { color: '#E1E7EA' }
                         }
                     }
                 }
@@ -358,5 +292,4 @@ if ($result->num_rows > 0) {
 </body>
 
 </html>
-
 <?php $conn->close(); ?>

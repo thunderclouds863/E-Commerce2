@@ -1,8 +1,8 @@
 <?php
 session_start();
-$isLoggedIn = isset($_SESSION['username']); // Check if user is logged in
+$isLoggedIn = isset($_SESSION['username']);
 if (!$isLoggedIn) {
-    header("Location: login.php"); // Redirect to login if not logged in
+    header("Location: login.php");
     exit();
 }
 
@@ -12,14 +12,12 @@ $password = "";
 $dbname = "part";
 $conn = new mysqli($servername, $username, $password, $dbname);
 
-// Cek koneksi database
 if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-$order_id = $_GET['order_id']; // Mendapatkan ID pesanan dari URL
+$order_id = $_GET['order_id'];
 
-// Mengambil detail pesanan berdasarkan order_id
 $order_sql = "SELECT o.id, o.total_amount, o.status, o.created_at, o.address, o.payment_method
               FROM orders o
               WHERE o.id = ?";
@@ -28,7 +26,6 @@ $stmt_order->bind_param("i", $order_id);
 $stmt_order->execute();
 $order_result = $stmt_order->get_result();
 
-// Mengambil data order_items dengan informasi produk
 $order_items_sql = "SELECT oi.*, p.name AS product_name, p.price AS product_price
                     FROM order_items oi
                     JOIN products p ON oi.product_id = p.id
@@ -44,355 +41,130 @@ if ($order_result->num_rows > 0) {
     echo "Order not found.";
     exit;
 }
-?>
 
+$usernameDisplay = htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8');
+$avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
+?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Order Details - AS Berkah E-Commerce</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Poppins', sans-serif;
-            background-color: #f9f5f2;
-            /* Light pastel background */
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            /* Full viewport height */
-        }
-
-        header {
-    padding: 20px 10%;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: white;
-    position: sticky;
-    top: 0;
-    z-index: 1000;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.logo img {
-    width: 40px;
-}
-
-nav {
-    display: flex;
-    gap: 20px;
-}
-
-nav a {
-    text-decoration: none;
-    color: #333;
-    font-weight: 500;
-    transition: color 0.3s ease;
-}
-
-nav a:hover {
-    color: #f4a460;
-}
-
-.hamburger {
-    display: none;
-    flex-direction: column;
-    cursor: pointer;
-    gap: 5px;
-}
-
-.hamburger span {
-    width: 25px;
-    height: 3px;
-    background: #333;
-}
-
-@media (max-width: 768px) {
-    nav {
-        display: none;
-        flex-direction: column;
-        background: white;
-        position: absolute;
-        top: 100%;
-        left: 0;
-        width: 100%;
-        padding: 10px 0;
-    }
-
-    nav.show {
-        display: flex;
-    }
-
-    .hamburger {
-        display: flex;
-    }
-}
-
-/* User Menu */
-.user-menu {
-    position: relative;
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    gap: 5px;
-}
-
-.user-menu:hover .dropdown-menu {
-    display: block;
-}
-
-.user-icon {
-    font-size: 20px;
-    color: #333;
-}
-
-#username {
-    font-weight: 500;
-    color: #333;
-}
-
-.dropdown-menu {
-    display: none;
-    position: absolute;
-    top: 100%;
-    right: 0;
-    background: white;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    padding: 10px;
-    border-radius: 5px;
-    z-index: 1000;
-    text-align: left;
-}
-
-.dropdown-menu a {
-    display: block;
-    padding: 5px 10px;
-    color: #333;
-    text-decoration: none;
-    transition: background 0.2s ease;
-}
-
-.dropdown-menu a:hover {
-    background: #f4a460;
-    color: white;
-}
-
-footer {
-    background: #2F4F4F;
-    color: white;
-    padding: 40px 0;
-    margin-top: 60px;
-    text-align: center;
-}
-
-
-
-        .title a {
-            color: white;
-            text-decoration: none;
-            margin: 0 10px;
-            border-radius: 5px;
-            padding: 8px 12px;
-        }
-
-        .title a:hover {
-            background-color: #ff5722;
-        }
-
-
-        .container {
-            width: 80%;
-            max-width: 1200px;
-            margin: 20px auto;
-            flex: 1;
-            /* Ensure container takes up available space */
-        }
-
-        .content {
-            margin-top: 30px;
-            padding: 20px;
-            background-color: #ffffff;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .cart-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .cart-table th,
-        .cart-table td {
-            padding: 15px;
-            text-align: center;
-            border: 1px solid #ddd;
-        }
-
-        .cart-table th {
-            background-color: #2F4F4F;
-            color: white;
-        }
-
-        .cart-table td {
-            text-align: right;
-        }
-
-        .cart-summary {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #fff4e6;
-            border-radius: 8px;
-        }
-
-        .total-price {
-            font-size: 18px;
-            font-weight: bold;
-        }
-
-        @media (max-width: 768px) {
-            .navbar a {
-                padding: 8px 15px;
-                /* Smaller padding for mobile screens */
-            }
-
-            .container {
-                width: 95%;
-                /* Reduced container width on smaller screens */
-            }
-        }
-    </style>
+    <title>Order #<?= (int)$order['id'] ?> (Admin) - Guspart Autoshop</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/style.css">
 </head>
 
 <body>
-
-<header>
-    <div class="logo">
-        <img src="gambar1.png" alt="Logo">
-        <h2>Guspart Autoshop</h2>
-    </div>
-    <nav>
-            <a href="admin_dashboard.php">Home</a>
-            <a href="order-management.php">Order Management</a>
-            <a href="inventory_management.php">Inventory Management</a>
-            <a href="admin_dashboard.php#footer">Contact Us</a>
-            <div class="user-menu">
-                <?php if ($isLoggedIn): ?>
-                    <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-toggle="dropdown"
-                        aria-haspopup="true" aria-expanded="false">
-                        <span class="user-icon">&#128100; <?= $_SESSION['username']; ?></span>
-                    </a>
-                    <div class="dropdown-menu" aria-labelledby="navbarDropdown">
-                        <a class="dropdown-item" href="logout.php">
-                            <i class="fas fa-sign-out-alt"></i> Logout
-                        </a>
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="admin_dashboard.php" class="brand-logo">
+                <img src="gambar1.png" alt="Guspart Autoshop Logo">
+                <span class="brand-name">Guspart Autoshop</span>
+                <span class="brand-badge">Admin</span>
+            </a>
+            <nav class="site-nav" aria-label="Admin navigation">
+                <a href="admin_dashboard.php">Dashboard</a>
+                <a href="order-management.php" class="active">Order Management</a>
+                <a href="inventory_management.php">Inventory Management</a>
+                <div class="user-menu">
+                    <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+                        <span class="user-avatar"><?= $avatarInitial ?></span>
+                        <span><?= $usernameDisplay ?></span>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a href="logout.php">Logout</a>
                     </div>
-                <?php else: ?>
-                    <!-- Optionally add login link or other content for not logged in users -->
-                    <a href="login.php">Login</a>
-                <?php endif; ?>
+                </div>
+            </nav>
+            <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
+
+    <main class="page-section">
+        <div class="container">
+            <div class="section-header">
+                <div>
+                    <h1>Order #<?= (int)$order['id'] ?></h1>
+                    <p>Placed on <?= htmlspecialchars($order['created_at']) ?></p>
+                </div>
+                <a href="order-management.php" class="btn btn-outline btn-sm">&larr; Back to Order Management</a>
             </div>
 
-        </nav>
+            <div class="surface-card">
+                <div class="meta-grid">
+                    <div class="meta-box">
+                        <div class="meta-label">Status</div>
+                        <div class="meta-value">
+                            <span class="badge badge-info"><?= htmlspecialchars(ucfirst($order['status'])) ?></span>
+                        </div>
+                    </div>
+                    <div class="meta-box">
+                        <div class="meta-label">Payment Method</div>
+                        <div class="meta-value"><?= htmlspecialchars(ucwords(str_replace('_', ' ', $order['payment_method']))) ?></div>
+                    </div>
+                    <div class="meta-box">
+                        <div class="meta-label">Shipping Address</div>
+                        <div class="meta-value"><?= htmlspecialchars($order['address']) ?></div>
+                    </div>
+                    <div class="meta-box">
+                        <div class="meta-label">Total Amount</div>
+                        <div class="meta-value" style="color: var(--primary);">Rp <?= number_format($order['total_amount'], 0, ',', '.') ?></div>
+                    </div>
+                </div>
 
-    <div class="hamburger" onclick="toggleMenu()">
-        <span></span>
-        <span></span>
-        <span></span>
-    </div>
-</header>
+                <h2 style="font-size: 1.2rem; color: var(--primary); margin-bottom: 14px;">Order Items</h2>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Product Name</th>
+                                <th>Quantity</th>
+                                <th>Unit Price</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            $total_order_amount = 0;
+                            while ($item = $order_items_result->fetch_assoc()):
+                                $total_product_price = $item['quantity'] * $item['product_price'];
+                                $total_order_amount += $total_product_price;
+                                ?>
+                                <tr>
+                                    <td><strong><?= htmlspecialchars($item['product_name']) ?></strong></td>
+                                    <td><?= (int)$item['quantity'] ?></td>
+                                    <td>Rp <?= number_format($item['product_price'], 0, ',', '.') ?></td>
+                                    <td><strong>Rp <?= number_format($total_product_price, 0, ',', '.') ?></strong></td>
+                                </tr>
+                            <?php endwhile; ?>
+                        </tbody>
+                    </table>
+                </div>
 
-
-    <div class="container">
-        <div class="content">
-            <h2>Order ID: <?php echo $order['id']; ?></h2>
-            <p><strong>Status:</strong> <?php echo ucfirst($order['status']); ?></p>
-            <p><strong>Total Amount:</strong> Rp <?php echo number_format($order['total_amount'], 0, ',', '.'); ?></p>
-            <p><strong>Shipping Address:</strong> <?php echo $order['address']; ?></p>
-            <p><strong>Payment Method:</strong> <?php echo ucfirst($order['payment_method']); ?></p>
-            <p><strong>Order Date:</strong> <?php echo $order['created_at']; ?></p>
-
-            <h3>Order Items</h3>
-            <table class="cart-table">
-                <thead>
-                    <tr>
-                        <th>Product Name</th>
-                        <th>Quantity</th>
-                        <th>Price</th>
-                        <th>Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $total_order_amount = 0;
-                    while ($item = $order_items_result->fetch_assoc()) {
-                        $total_product_price = $item['quantity'] * $item['product_price'];
-                        $total_order_amount += $total_product_price;
-                        ?>
-                        <tr>
-                            <td><?php echo $item['product_name']; ?></td>
-                            <td><?php echo $item['quantity']; ?></td>
-                            <td>Rp <?php echo number_format($item['product_price'], 0, ',', '.'); ?></td>
-                            <td>Rp <?php echo number_format($total_product_price, 0, ',', '.'); ?></td>
-                        </tr>
-                        <?php
-                    }
-                    ?>
-                </tbody>
-            </table>
-
-            <div class="cart-summary">
-                <p class="total-price">Total Order Amount: Rp
-                    <?php echo number_format($total_order_amount, 0, ',', '.'); ?>
-                </p>
+                <div class="checkout-summary-box" style="margin-top: 24px;">
+                    <span style="font-weight: 600; color: var(--primary);">Total Order Amount</span>
+                    <span class="total-price">Rp <?= number_format($total_order_amount, 0, ',', '.') ?></span>
+                </div>
             </div>
         </div>
-    </div>
+    </main>
 
-    <footer>
-    <p>&copy; 2024 Guspart Autoshop. All Rights Reserved.</p>
-</footer>
+    <footer class="portal-footer">
+        &copy; 2024 Guspart Autoshop. All Rights Reserved.
+    </footer>
 
-
+    <script src="assets/js/main.js"></script>
 </body>
-<script>
-    function toggleMenu() {
-    const nav = document.querySelector('nav');
-    nav.classList.toggle('show');
-}
 
-// Add smooth scrolling
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        document.querySelector(this.getAttribute('href')).scrollIntoView({
-            behavior: 'smooth'
-        });
-    });
-});
-
-// Sticky header
-window.onscroll = function () {
-    if (window.pageYOffset > 50) {
-        document.querySelector('header').style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-    } else {
-        document.querySelector('header').style.boxShadow = 'none';
-    }
-};
-
-</script>
 </html>
-
 <?php
 $conn->close();
 ?>
