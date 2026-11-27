@@ -1,61 +1,66 @@
 <?php
-session_start();
-$isLoggedIn = isset($_SESSION['username']);
-if (!$isLoggedIn) {
-    header("Location: login.php");
-    exit();
-}
-if (!isset($_SESSION['role']) || $_SESSION['role'] != 'admin') {
-  header("Location: index.php");
-  exit();
-}
+require_once __DIR__ . '/includes/bootstrap.php';
+require_role(['admin']);
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
-$conn = new mysqli($servername, $username, $password, $dbname);
+$conn = db();
+$flashSuccess = '';
+$flashError = '';
 
-if ($conn->connect_error) {
-  die("Connection failed: " . $conn->connect_error);
-}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['transition_order'])) {
+    if (!verify_csrf()) {
+        $flashError = 'Invalid security token. Please try again.';
+    } else {
+        $order_id = (int)($_POST['order_id'] ?? 0);
+        $next_status = trim($_POST['next_status'] ?? '');
 
-if (isset($_GET['confirm_order'])) {
-    $order_id = $_GET['confirm_order'];
+        $allowedTransitions = [
+            'Pending'      => 'Dikonfirmasi',
+            'pending'      => 'Dikonfirmasi',
+            'Dikonfirmasi' => 'Dikemas',
+            'Dikemas'      => 'Siap Dikirim',
+        ];
 
-    $update_status = "UPDATE orders SET status = 'Dikonfirmasi' WHERE id = ?";
-    $stmt = $conn->prepare($update_status);
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
+        $stmtCheck = $conn->prepare('SELECT status FROM orders WHERE id = ? LIMIT 1');
+        $stmtCheck->bind_param('i', $order_id);
+        $stmtCheck->execute();
+        $orderRow = $stmtCheck->get_result()->fetch_assoc();
+        $stmtCheck->close();
 
-    $update_status = "UPDATE orders SET status = 'Dikemas' WHERE id = ? And Status = 'Dikonfirmasi'";
-    $stmt = $conn->prepare($update_status);
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
+        if (!$orderRow) {
+            $flashError = 'Order not found.';
+        } elseif (!isset($allowedTransitions[$orderRow['status']]) || $allowedTransitions[$orderRow['status']] !== $next_status) {
+            $flashError = 'Invalid order status transition.';
+        } else {
+            $conn->begin_transaction();
+            try {
+                // Only deduct product stock ONCE when transitioning from Pending -> Dikonfirmasi
+                if (strtolower($orderRow['status']) === 'pending' && $next_status === 'Dikonfirmasi') {
+                    $stmtItems = $conn->prepare('SELECT product_id, quantity FROM order_items WHERE order_id = ?');
+                    $stmtItems->bind_param('i', $order_id);
+                    $stmtItems->execute();
+                    $itemsRes = $stmtItems->get_result();
+                    while ($item = $itemsRes->fetch_assoc()) {
+                        $updStock = $conn->prepare('UPDATE products SET stock = GREATEST(0, stock - ?) WHERE id = ?');
+                        $updStock->bind_param('ii', $item['quantity'], $item['product_id']);
+                        $updStock->execute();
+                        $updStock->close();
+                    }
+                    $stmtItems->close();
+                }
 
-    $update_status = "UPDATE orders SET status = 'Siap Dikirim' WHERE id = ? And Status = 'Dikemas'";
-    $stmt = $conn->prepare($update_status);
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
+                $updOrder = $conn->prepare('UPDATE orders SET status = ? WHERE id = ?');
+                $updOrder->bind_param('si', $next_status, $order_id);
+                $updOrder->execute();
+                $updOrder->close();
 
-    $order_items = "SELECT product_id, quantity FROM order_items WHERE order_id = ?";
-    $stmt = $conn->prepare($order_items);
-    $stmt->bind_param("i", $order_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    while ($item = $result->fetch_assoc()) {
-        $product_id = $item['product_id'];
-        $quantity = $item['quantity'];
-
-        $update_stock = "UPDATE products SET stock = stock - ? WHERE id = ?";
-        $stmt = $conn->prepare($update_stock);
-        $stmt->bind_param("ii", $quantity, $product_id);
-        $stmt->execute();
+                $conn->commit();
+                $flashSuccess = "Order #{$order_id} updated to {$next_status}.";
+            } catch (Throwable $ex) {
+                $conn->rollback();
+                $flashError = 'Failed to update order status.';
+            }
+        }
     }
-
-    header("Location: order-management.php");
-    exit();
 }
 
 $sql = "SELECT orders.id, orders.created_at, orders.total_amount, orders.status, users.username
@@ -64,15 +69,8 @@ $sql = "SELECT orders.id, orders.created_at, orders.total_amount, orders.status,
         ORDER BY orders.created_at DESC";
 $result = $conn->query($sql);
 
-$usernameDisplay = htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8');
+$usernameDisplay = e($_SESSION['username']);
 $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
-
-function getAdminOrderBadge($status) {
-    $s = strtolower(trim($status));
-    if ($s === 'selesai') return 'badge-success';
-    if ($s === 'pending') return 'badge-warning';
-    return 'badge-info';
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -88,6 +86,8 @@ function getAdminOrderBadge($status) {
 </head>
 
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <header class="site-header">
         <div class="header-inner">
             <a href="admin_dashboard.php" class="brand-logo">
@@ -117,14 +117,21 @@ function getAdminOrderBadge($status) {
         </div>
     </header>
 
-    <main class="page-section">
+    <main id="main-content" class="page-section">
         <div class="container">
             <div class="section-header">
                 <div>
                     <h1>Order Management</h1>
-                    <p>Review customer orders, inspect details, and confirm orders for fulfillment.</p>
+                    <p>Confirm pending orders, pack items, and hand off packages to couriers step by step.</p>
                 </div>
             </div>
+
+            <?php if ($flashSuccess !== ''): ?>
+                <div class="alert alert-success" role="status" aria-live="polite"><?= e($flashSuccess) ?></div>
+            <?php endif; ?>
+            <?php if ($flashError !== ''): ?>
+                <div class="alert alert-error" role="alert" aria-live="polite"><?= e($flashError) ?></div>
+            <?php endif; ?>
 
             <div class="surface-card" style="padding: 0; overflow: hidden;">
                 <div class="table-responsive" style="border: none; border-radius: 0;">
@@ -140,26 +147,42 @@ function getAdminOrderBadge($status) {
                             </tr>
                         </thead>
                         <tbody>
-                            <?php if ($result->num_rows > 0): ?>
+                            <?php if ($result && $result->num_rows > 0): ?>
                                 <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
                                         <td><strong>#<?= (int)$row['id'] ?></strong></td>
-                                        <td><?= htmlspecialchars($row['username']) ?></td>
-                                        <td><?= htmlspecialchars($row['created_at']) ?></td>
-                                        <td style="white-space: nowrap;"><strong>Rp <?= number_format($row['total_amount'], 0, ',', '.') ?></strong></td>
+                                        <td><?= e($row['username']) ?></td>
+                                        <td><?= e($row['created_at']) ?></td>
+                                        <td style="white-space: nowrap;"><strong><?= format_rp($row['total_amount']) ?></strong></td>
                                         <td>
-                                            <span class="badge <?= getAdminOrderBadge($row['status']) ?>">
-                                                <?= htmlspecialchars(ucfirst($row['status'])) ?>
+                                            <span class="badge <?= status_badge_class($row['status']) ?>">
+                                                <?= e(ucfirst($row['status'])) ?>
                                             </span>
                                         </td>
                                         <td>
                                             <div class="table-actions">
                                                 <a href="order-details-admin.php?order_id=<?= (int)$row['id'] ?>" class="btn btn-outline btn-sm">View Details</a>
-                                                <?php if (strtolower($row['status']) == 'pending'): ?>
-                                                    <a href="order-management.php?confirm_order=<?= (int)$row['id'] ?>" class="btn btn-success btn-sm">Confirm</a>
-                                                <?php endif; ?>
-                                                <?php if ($row['status'] == 'Dikonfirmasi'): ?>
-                                                    <a href="order-management.php?confirm_order=<?= (int)$row['id'] ?>" class="btn btn-primary btn-sm">Dikemas</a>
+                                                <?php if (strtolower($row['status']) === 'pending'): ?>
+                                                    <form method="POST" style="display:inline;">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="order_id" value="<?= (int)$row['id'] ?>">
+                                                        <input type="hidden" name="next_status" value="Dikonfirmasi">
+                                                        <button type="submit" name="transition_order" class="btn btn-success btn-sm">Confirm Order</button>
+                                                    </form>
+                                                <?php elseif ($row['status'] === 'Dikonfirmasi'): ?>
+                                                    <form method="POST" style="display:inline;">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="order_id" value="<?= (int)$row['id'] ?>">
+                                                        <input type="hidden" name="next_status" value="Dikemas">
+                                                        <button type="submit" name="transition_order" class="btn btn-primary btn-sm">Mark Packed</button>
+                                                    </form>
+                                                <?php elseif ($row['status'] === 'Dikemas'): ?>
+                                                    <form method="POST" style="display:inline;">
+                                                        <?= csrf_field() ?>
+                                                        <input type="hidden" name="order_id" value="<?= (int)$row['id'] ?>">
+                                                        <input type="hidden" name="next_status" value="Siap Dikirim">
+                                                        <button type="submit" name="transition_order" class="btn btn-secondary btn-sm">Ready to Ship</button>
+                                                    </form>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
@@ -185,6 +208,3 @@ function getAdminOrderBadge($status) {
 </body>
 
 </html>
-<?php
-$conn->close();
-?>

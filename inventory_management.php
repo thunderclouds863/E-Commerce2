@@ -1,102 +1,138 @@
 <?php
-session_start();
-if (!isset($_SESSION['role']) || $_SESSION['role'] != 'admin') {
-  header("Location: index.php");
-  exit();
-}
+require_once __DIR__ . '/includes/bootstrap.php';
+require_role(['admin']);
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
+$conn = db();
+$flashSuccess = '';
+$flashError = '';
 
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-  die("Connection failed: " . $conn->connect_error);
-}
-
-function uploadImage($image)
-{
-    $targetDir = "uploads/";
-    $imageFileType = strtolower(pathinfo($image["name"], PATHINFO_EXTENSION));
-    $allowedTypes = ["jpg", "jpeg", "png"];
-
-    if (!in_array($imageFileType, $allowedTypes)) {
-        return "error_type";
+function uploadImage(array $image): array {
+    $targetDir = 'uploads/';
+    if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0755, true);
     }
 
-    if ($image["size"] > 2 * 1024 * 1024) {
-        return "error_size";
+    $ext = strtolower(pathinfo($image['name'], PATHINFO_EXTENSION));
+    $allowedTypes = ['jpg', 'jpeg', 'png'];
+
+    if (!in_array($ext, $allowedTypes, true)) {
+        return ['ok' => false, 'error' => 'Only JPG, JPEG, and PNG images are allowed.'];
+    }
+    if ($image['size'] > 2 * 1024 * 1024) {
+        return ['ok' => false, 'error' => 'Image file must be 2MB or smaller.'];
+    }
+    if (@getimagesize($image['tmp_name']) === false) {
+        return ['ok' => false, 'error' => 'Uploaded file is not a valid image.'];
     }
 
     $i = 1;
-    $targetFile = $targetDir . "produk" . $i . "." . $imageFileType;
-
+    $targetFile = $targetDir . 'produk' . $i . '.' . $ext;
     while (file_exists($targetFile)) {
         $i++;
-        $targetFile = $targetDir . "produk" . $i . "." . $imageFileType;
+        $targetFile = $targetDir . 'produk' . $i . '.' . $ext;
     }
 
-    if (move_uploaded_file($image["tmp_name"], $targetFile)) {
-        return $targetFile;
+    if (move_uploaded_file($image['tmp_name'], $targetFile)) {
+        return ['ok' => true, 'path' => $targetFile];
     }
 
-    return "error_upload";
+    return ['ok' => false, 'error' => 'Failed to save uploaded image.'];
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  if (isset($_POST['action'])) {
-    $action = $_POST['action'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if (!verify_csrf()) {
+        $flashError = 'Invalid security token. Please try again.';
+    } else {
+        $action = $_POST['action'];
 
-    if ($action === 'add_product') {
-      $name = $_POST['name'];
-      $description = $_POST['description'];
-      $price = $_POST['price'];
-      $stock = $_POST['stock'];
+        if ($action === 'add_product') {
+            $name = trim($_POST['name'] ?? '');
+            $description = trim($_POST['description'] ?? '');
+            $price = (float)($_POST['price'] ?? 0);
+            $stock = (int)($_POST['stock'] ?? 0);
 
-      $image = null;
-      if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
-        $image = uploadImage($_FILES['image']);
-      }
+            if ($name === '' || $price < 0 || $stock < 0) {
+                $flashError = 'Please provide a valid product name, non-negative price, and stock.';
+            } else {
+                $image = '';
+                $uploadOk = true;
+                if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+                    $up = uploadImage($_FILES['image']);
+                    if ($up['ok']) {
+                        $image = $up['path'];
+                    } else {
+                        $uploadOk = false;
+                        $flashError = $up['error'];
+                    }
+                }
 
-      $sql = "INSERT INTO products (name, description, price, stock, image) VALUES (?, ?, ?, ?, ?)";
-      $stmt = $conn->prepare($sql);
-      $stmt->bind_param("ssdss", $name, $description, $price, $stock, $image);
-      $stmt->execute();
+                if ($uploadOk) {
+                    $stmt = $conn->prepare('INSERT INTO products (name, description, price, stock, image) VALUES (?, ?, ?, ?, ?)');
+                    $stmt->bind_param('ssdis', $name, $description, $price, $stock, $image);
+                    if ($stmt->execute()) {
+                        $flashSuccess = "Product \"{$name}\" added to inventory.";
+                    } else {
+                        $flashError = 'Failed to add product.';
+                    }
+                    $stmt->close();
+                }
+            }
+        }
+
+        if ($action === 'edit_product') {
+            $id = (int)($_POST['id'] ?? 0);
+            $name = trim($_POST['name'] ?? '');
+            $description = trim($_POST['description'] ?? '');
+            $price = (float)($_POST['price'] ?? 0);
+            $stock = (int)($_POST['stock'] ?? 0);
+            $image = trim($_POST['existing_image'] ?? '');
+
+            if ($id <= 0 || $name === '' || $price < 0 || $stock < 0) {
+                $flashError = 'Please provide valid product details.';
+            } else {
+                $uploadOk = true;
+                if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+                    $up = uploadImage($_FILES['image']);
+                    if ($up['ok']) {
+                        $image = $up['path'];
+                    } else {
+                        $uploadOk = false;
+                        $flashError = $up['error'];
+                    }
+                }
+
+                if ($uploadOk) {
+                    $stmt = $conn->prepare('UPDATE products SET name = ?, description = ?, price = ?, stock = ?, image = ? WHERE id = ?');
+                    $stmt->bind_param('ssdisi', $name, $description, $price, $stock, $image, $id);
+                    if ($stmt->execute()) {
+                        $flashSuccess = "Product \"{$name}\" updated.";
+                    } else {
+                        $flashError = 'Failed to update product.';
+                    }
+                    $stmt->close();
+                }
+            }
+        }
+
+        if ($action === 'delete_product') {
+            $id = (int)($_POST['id'] ?? 0);
+            if ($id > 0) {
+                $stmt = $conn->prepare('DELETE FROM products WHERE id = ?');
+                $stmt->bind_param('i', $id);
+                if ($stmt->execute()) {
+                    $flashSuccess = "Product #{$id} deleted.";
+                } else {
+                    $flashError = 'Failed to delete product.';
+                }
+                $stmt->close();
+            }
+        }
     }
-
-    if ($action === 'edit_product') {
-      $id = $_POST['id'];
-      $name = $_POST['name'];
-      $description = $_POST['description'];
-      $price = $_POST['price'];
-      $stock = $_POST['stock'];
-      $existingImage = $_POST['existing_image'];
-
-      $image = $existingImage;
-      if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
-        $image = uploadImage($_FILES['image']);
-      }
-
-      $sql = "UPDATE products SET name = ?, description = ?, price = ?, stock = ?, image = ? WHERE id = ?";
-      $stmt = $conn->prepare($sql);
-      $stmt->bind_param("ssdssi", $name, $description, $price, $stock, $image, $id);
-      $stmt->execute();
-    }
-    if ($action === 'delete_product') {
-      $id = $_POST['id'];
-      $sql = "DELETE FROM products WHERE id = ?";
-      $stmt = $conn->prepare($sql);
-      $stmt->bind_param("i", $id);
-      $stmt->execute();
-    }
-  }
 }
 
-$products = $conn->query("SELECT * FROM products");
-$usernameDisplay = htmlspecialchars($_SESSION['username'] ?? 'Admin', ENT_QUOTES, 'UTF-8');
-$avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
+$products = $conn->query('SELECT * FROM products ORDER BY id ASC');
+$usernameDisplay = e($_SESSION['username']);
+$avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -112,6 +148,8 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
 </head>
 
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <header class="site-header">
     <div class="header-inner">
       <a href="admin_dashboard.php" class="brand-logo">
@@ -141,7 +179,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
     </div>
   </header>
 
-  <main class="page-section">
+  <main id="main-content" class="page-section">
     <div class="container">
       <div class="section-header">
         <div>
@@ -150,6 +188,13 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
         </div>
         <button type="button" class="btn btn-primary" onclick="togglePopup('add')">+ Add Product</button>
       </div>
+
+      <?php if ($flashSuccess !== ''): ?>
+        <div class="alert alert-success" role="status" aria-live="polite"><?= e($flashSuccess) ?></div>
+      <?php endif; ?>
+      <?php if ($flashError !== ''): ?>
+        <div class="alert alert-error" role="alert" aria-live="polite"><?= e($flashError) ?></div>
+      <?php endif; ?>
 
       <div class="surface-card" style="padding: 0; overflow: hidden;">
         <div class="table-responsive" style="border: none; border-radius: 0;">
@@ -166,24 +211,17 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
             </thead>
             <tbody>
               <?php while ($product = $products->fetch_assoc()): ?>
-                <?php
-                $imgPath = $product['image'];
-                if ($imgPath && !file_exists($imgPath) && file_exists('uploads/' . $imgPath)) {
-                  $imgPath = 'uploads/' . $imgPath;
-                }
-                ?>
+                <?php $imgPath = resolve_product_image((int)$product['id'], $product['image']); ?>
                 <tr>
                   <td><strong>#<?= (int)$product['id'] ?></strong></td>
                   <td>
                     <div style="display: flex; align-items: center; gap: 12px;">
-                      <?php if ($imgPath && file_exists($imgPath)): ?>
-                        <img class="table-thumb" src="<?= htmlspecialchars($imgPath) ?>" alt="<?= htmlspecialchars($product['name']) ?>">
-                      <?php endif; ?>
-                      <strong><?= htmlspecialchars($product['name']) ?></strong>
+                      <img class="table-thumb" src="<?= e($imgPath) ?>" alt="<?= e($product['name']) ?>">
+                      <strong><?= e($product['name']) ?></strong>
                     </div>
                   </td>
-                  <td style="color: var(--text-secondary); max-width: 280px;"><?= htmlspecialchars($product['description']) ?></td>
-                  <td style="white-space: nowrap;"><strong>Rp <?= number_format($product['price'], 0, ',', '.') ?></strong></td>
+                  <td style="color: var(--text-secondary); max-width: 280px;"><?= e($product['description']) ?></td>
+                  <td style="white-space: nowrap;"><strong><?= format_rp($product['price']) ?></strong></td>
                   <td>
                     <span class="badge <?= ((int)$product['stock'] <= 10) ? 'badge-warning' : 'badge-success' ?>">
                       <?= (int)$product['stock'] ?> pcs
@@ -191,8 +229,9 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
                   </td>
                   <td>
                     <div class="table-actions">
-                      <button type="button" class="btn btn-outline btn-sm" onclick='editProduct(<?= htmlspecialchars(json_encode($product), ENT_QUOTES, "UTF-8") ?>)'>Edit</button>
+                      <button type="button" class="btn btn-outline btn-sm" onclick='editProduct(<?= e(json_encode($product)) ?>)'>Edit</button>
                       <form method="POST" style="display: inline;" onsubmit="return confirm('Delete this product?');">
+                        <?= csrf_field() ?>
                         <input type="hidden" name="action" value="delete_product">
                         <input type="hidden" name="id" value="<?= (int)$product['id'] ?>">
                         <button type="submit" class="btn btn-danger btn-sm">Delete</button>
@@ -216,6 +255,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
         <button type="button" class="btn btn-outline btn-sm" onclick="togglePopup('add')" aria-label="Close">&times;</button>
       </div>
       <form method="POST" enctype="multipart/form-data">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="add_product">
         <div class="form-group">
           <label for="add-name">Product Name</label>
@@ -227,15 +267,15 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
         </div>
         <div class="form-group">
           <label for="add-price">Price (Rp)</label>
-          <input id="add-price" type="number" name="price" step="0.01" required>
+          <input id="add-price" type="number" name="price" min="0" step="0.01" required>
         </div>
         <div class="form-group">
           <label for="add-stock">Stock</label>
-          <input id="add-stock" type="number" name="stock" required>
+          <input id="add-stock" type="number" name="stock" min="0" required>
         </div>
         <div class="form-group">
-          <label for="add-image">Product Image</label>
-          <input id="add-image" type="file" name="image" accept="image/*">
+          <label for="add-image">Product Image (JPG/PNG, max 2MB)</label>
+          <input id="add-image" type="file" name="image" accept="image/jpeg,image/png">
         </div>
         <div class="popup-actions">
           <button type="button" class="btn btn-outline" onclick="togglePopup('add')">Cancel</button>
@@ -253,6 +293,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
         <button type="button" class="btn btn-outline btn-sm" onclick="togglePopup('edit')" aria-label="Close">&times;</button>
       </div>
       <form method="POST" enctype="multipart/form-data">
+        <?= csrf_field() ?>
         <input type="hidden" name="action" value="edit_product">
         <input type="hidden" name="id" id="edit-id">
         <input type="hidden" name="existing_image" id="edit-existing-image">
@@ -266,15 +307,15 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'A', 0, 1));
         </div>
         <div class="form-group">
           <label for="edit-price">Price (Rp)</label>
-          <input type="number" name="price" id="edit-price" step="0.01" required>
+          <input type="number" name="price" id="edit-price" min="0" step="0.01" required>
         </div>
         <div class="form-group">
           <label for="edit-stock">Stock</label>
-          <input type="number" name="stock" id="edit-stock" required>
+          <input type="number" name="stock" id="edit-stock" min="0" required>
         </div>
         <div class="form-group">
-          <label for="edit-image">Replace Image (optional)</label>
-          <input id="edit-image" type="file" name="image" accept="image/*">
+          <label for="edit-image">Replace Image (optional, JPG/PNG max 2MB)</label>
+          <input id="edit-image" type="file" name="image" accept="image/jpeg,image/png">
         </div>
         <div class="popup-actions">
           <button type="button" class="btn btn-outline" onclick="togglePopup('edit')">Cancel</button>
