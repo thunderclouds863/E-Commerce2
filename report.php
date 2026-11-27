@@ -1,27 +1,16 @@
 <?php
-session_start();
-if (!isset($_SESSION['role']) || $_SESSION['role'] != 'owner') {
-    header("Location: index.php");
-    exit;
-}
+require_once __DIR__ . '/includes/bootstrap.php';
+require_role(['owner']);
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
-$conn = new mysqli($servername, $username, $password, $dbname);
+$conn = db();
 
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-$sql = "SELECT * FROM orders WHERE status = 'Selesai'";
+$sql = "SELECT * FROM orders WHERE status = 'Selesai' ORDER BY created_at DESC";
 $result = $conn->query($sql);
 
 $total_sales = 0;
 $monthly_sales = [];
 
-if ($result->num_rows > 0) {
+if ($result && $result->num_rows > 0) {
     while ($order = $result->fetch_assoc()) {
         $total_sales += $order['total_amount'];
 
@@ -31,12 +20,12 @@ if ($result->num_rows > 0) {
         }
         $monthly_sales[$order_month] += $order['total_amount'];
     }
-
+    ksort($monthly_sales);
     $result->data_seek(0);
 }
 
-$usernameDisplay = htmlspecialchars($_SESSION['username'] ?? 'Owner', ENT_QUOTES, 'UTF-8');
-$avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
+$usernameDisplay = e($_SESSION['username']);
+$avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -52,7 +41,6 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
     <link rel="stylesheet" href="assets/css/style.css">
     <style>
-        /* Keep Bootstrap utilities harmonious with Guspart design tokens */
         .chart-canvas-wrap {
             position: relative;
             width: 100%;
@@ -73,7 +61,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
         }
 
         .modal-body h5 {
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: var(--text-muted);
@@ -88,6 +76,8 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
 </head>
 
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <header class="site-header">
         <div class="header-inner">
             <a href="owner_dashboard.php" class="brand-logo">
@@ -117,7 +107,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
         </div>
     </header>
 
-    <main class="page-section">
+    <main id="main-content" class="page-section">
         <div class="container">
             <div class="section-header">
                 <div>
@@ -130,11 +120,11 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-label">Total Orders Completed</div>
-                    <div class="stat-value"><?= (int)$result->num_rows ?></div>
+                    <div class="stat-value"><?= (int)($result ? $result->num_rows : 0) ?></div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-label">Total Sales Revenue</div>
-                    <div class="stat-value accent">Rp <?= number_format($total_sales, 0, ',', '.') ?></div>
+                    <div class="stat-value accent"><?= format_rp($total_sales) ?></div>
                 </div>
             </div>
 
@@ -158,16 +148,18 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while ($order = $result->fetch_assoc()): ?>
-                                <tr>
-                                    <td><strong>#<?= (int)$order['id'] ?></strong></td>
-                                    <td><?= htmlspecialchars($order['created_at']) ?></td>
-                                    <td><strong>Rp <?= number_format($order['total_amount'], 0, ',', '.') ?></strong></td>
-                                    <td>
-                                        <button type="button" class="btn btn-primary btn-sm view-details" data-order-id="<?= (int)$order['id'] ?>">View Details</button>
-                                    </td>
-                                </tr>
-                            <?php endwhile; ?>
+                            <?php if ($result): ?>
+                                <?php while ($order = $result->fetch_assoc()): ?>
+                                    <tr>
+                                        <td><strong>#<?= (int)$order['id'] ?></strong></td>
+                                        <td><?= e($order['created_at']) ?></td>
+                                        <td><strong><?= format_rp($order['total_amount']) ?></strong></td>
+                                        <td>
+                                            <button type="button" class="btn btn-primary btn-sm view-details" data-order-id="<?= (int)$order['id'] ?>">View Details</button>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
@@ -231,15 +223,17 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
                     data: { order_id: orderId },
                     dataType: 'json',
                     success: function (data) {
-                        $('#customerInfo').text(`${data.customer_name} (${data.customer_email})`);
-                        $('#shippingAddress').text(data.shipping_address);
-                        $('#paymentMethod').text(data.payment_method);
+                        const emailPart = data.customer_email ? ` (${data.customer_email})` : '';
+                        $('#customerInfo').text(`${data.customer_name || 'Customer'}${emailPart}`);
+                        $('#shippingAddress').text(data.shipping_address || '-');
+                        $('#paymentMethod').text((data.payment_method || '-').replace(/_/g, ' '));
                         let orderDetailsHTML = '';
-                        data.order_items.forEach(item => {
+                        (data.order_items || []).forEach(item => {
+                            const priceFmt = Number(item.price || 0).toLocaleString('id-ID');
                             orderDetailsHTML += `<tr>
-                                <td>${item.product_name}</td>
-                                <td>${item.quantity}</td>
-                                <td>Rp ${item.price}</td>
+                                <td>${$('<div>').text(item.product_name).html()}</td>
+                                <td>${Number(item.quantity)}</td>
+                                <td>Rp ${priceFmt}</td>
                             </tr>`;
                         });
                         $('#orderDetails').html(orderDetailsHTML);
@@ -292,4 +286,3 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
 </body>
 
 </html>
-<?php $conn->close(); ?>

@@ -1,48 +1,34 @@
 <?php
-session_start();
-$isLoggedIn = isset($_SESSION['username']);
-if (!$isLoggedIn) {
-    header("Location: login.php");
-    exit();
-}
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
-$conn = new mysqli($servername, $username, $password, $dbname);
+require_once __DIR__ . '/includes/bootstrap.php';
+require_login();
 
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+$conn = db();
+$user_id = (int)$_SESSION['user_id'];
+$flashSuccess = '';
 
-$user_id = $_SESSION['user_id'];
-
-$sql = "SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC";
-$stmt = $conn->prepare($sql);
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$orders_result = $stmt->get_result();
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['mark_completed'])) {
-    $order_id = $_POST['order_id'];
-    $update_query = "UPDATE orders SET status = 'Selesai' WHERE id = ?";
-    $update_stmt = $conn->prepare($update_query);
-    $update_stmt->bind_param("i", $order_id);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_completed']) && verify_csrf()) {
+    $order_id = (int)($_POST['order_id'] ?? 0);
+    $update_stmt = $conn->prepare("UPDATE orders SET status = 'Selesai' WHERE id = ? AND user_id = ? AND status = 'Sampai Tujuan'");
+    $update_stmt->bind_param('ii', $order_id, $user_id);
     $update_stmt->execute();
-    header("Location: order-history.php");
+    $update_stmt->close();
+    header('Location: order-history.php');
     exit;
 }
 
-$usernameDisplay = htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8');
-$avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
+$sql = "SELECT o.*,
+               (SELECT oi.product_id FROM order_items oi WHERE oi.order_id = o.id LIMIT 1) AS first_product_id
+        FROM orders o
+        WHERE o.user_id = ?
+        ORDER BY o.created_at DESC";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param('i', $user_id);
+$stmt->execute();
+$orders_result = $stmt->get_result();
 
-function getStatusBadgeClass($status) {
-    $s = strtolower(trim($status));
-    if ($s === 'selesai') return 'badge-success';
-    if ($s === 'pending') return 'badge-warning';
-    if ($s === 'dikirim' || $s === 'siap dikirim' || $s === 'dikonfirmasi' || $s === 'sampai tujuan') return 'badge-info';
-    return 'badge-neutral';
-}
+$usernameDisplay = e($_SESSION['username']);
+$avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
+$cartCount = cart_item_count();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -58,6 +44,8 @@ function getStatusBadgeClass($status) {
 </head>
 
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <header class="site-header">
         <div class="header-inner">
             <a href="index.php" class="brand-logo">
@@ -67,21 +55,17 @@ function getStatusBadgeClass($status) {
             <nav class="site-nav" aria-label="Primary navigation">
                 <a href="index.php">Home</a>
                 <a href="product.php">Products</a>
-                <a href="order.php">Order</a>
+                <a href="order.php">Order<?= $cartCount > 0 ? " ({$cartCount})" : '' ?></a>
                 <a href="order-history.php" class="active">Order History</a>
                 <a href="#footer">Contact Us</a>
                 <div class="user-menu">
-                    <?php if ($isLoggedIn): ?>
-                        <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
-                            <span class="user-avatar"><?= $avatarInitial ?></span>
-                            <span><?= $usernameDisplay ?></span>
-                        </button>
-                        <div class="dropdown-menu">
-                            <a href="logout.php">Logout</a>
-                        </div>
-                    <?php else: ?>
-                        <a href="login.php" class="nav-cta">Login</a>
-                    <?php endif; ?>
+                    <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+                        <span class="user-avatar"><?= $avatarInitial ?></span>
+                        <span><?= $usernameDisplay ?></span>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a href="logout.php">Logout</a>
+                    </div>
                 </div>
             </nav>
             <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
@@ -92,7 +76,7 @@ function getStatusBadgeClass($status) {
         </div>
     </header>
 
-    <main class="page-section">
+    <main id="main-content" class="page-section">
         <div class="container">
             <div class="section-header">
                 <div>
@@ -119,25 +103,25 @@ function getStatusBadgeClass($status) {
                                 <?php while ($order = $orders_result->fetch_assoc()): ?>
                                     <tr>
                                         <td><strong>#<?= (int)$order['id'] ?></strong></td>
-                                        <td><?= htmlspecialchars($order['created_at']) ?></td>
-                                        <td><strong>Rp <?= number_format($order['total_amount'], 0, ',', '.') ?></strong></td>
+                                        <td><?= e($order['created_at']) ?></td>
+                                        <td><strong><?= format_rp($order['total_amount']) ?></strong></td>
                                         <td>
-                                            <span class="badge <?= getStatusBadgeClass($order['status']) ?>">
-                                                <?= htmlspecialchars(ucfirst($order['status'])) ?>
+                                            <span class="badge <?= status_badge_class($order['status']) ?>">
+                                                <?= e(ucfirst($order['status'])) ?>
                                             </span>
                                         </td>
                                         <td>
                                             <div class="table-actions">
-                                                <?php if ($order['status'] == 'Sampai Tujuan'): ?>
+                                                <?php if ($order['status'] === 'Sampai Tujuan'): ?>
                                                     <form method="POST" style="display: inline;">
+                                                        <?= csrf_field() ?>
                                                         <input type="hidden" name="order_id" value="<?= (int)$order['id'] ?>">
-                                                        <button type="submit" name="mark_completed" class="btn btn-success btn-sm">Mark Completed</button>
+                                                        <button type="submit" name="mark_completed" class="btn btn-success btn-sm">Confirm Received</button>
                                                     </form>
-                                                <?php else: ?>
-                                                    <a href="order-details.php?order_id=<?= (int)$order['id'] ?>" class="btn btn-outline btn-sm">View Details</a>
-                                                    <?php if ($order['status'] == 'Selesai' && !empty($order['product_id'])): ?>
-                                                        <a href="product-details.php?id=<?= (int)$order['product_id'] ?>" class="btn btn-primary btn-sm">Review</a>
-                                                    <?php endif; ?>
+                                                <?php endif; ?>
+                                                <a href="order-details.php?order_id=<?= (int)$order['id'] ?>" class="btn btn-outline btn-sm">View Details</a>
+                                                <?php if ($order['status'] === 'Selesai' && !empty($order['first_product_id'])): ?>
+                                                    <a href="product-details.php?id=<?= (int)$order['first_product_id'] ?>" class="btn btn-primary btn-sm">Review</a>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
@@ -196,6 +180,3 @@ function getStatusBadgeClass($status) {
 </body>
 
 </html>
-<?php
-$conn->close();
-?>

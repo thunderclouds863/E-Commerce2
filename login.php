@@ -1,66 +1,98 @@
 <?php
-// Database connection settings
-$host = 'localhost';
-$username = 'root';
-$password = '';
-$database = 'part';
+require_once __DIR__ . '/includes/bootstrap.php';
 
-// Create a connection
-$conn = new mysqli($host, $username, $password, $database);
-
-// Check the connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+if (isset($_SESSION['user_id'], $_SESSION['role'])) {
+    header('Location: ' . role_home($_SESSION['role']));
+    exit;
 }
 
 $error_message = '';
+$success_message = '';
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $username = $_POST['username'];
-    $password = $_POST['password']; // Plain text password
-
-    // Modified query to check username and password directly
-    $stmt = $conn->prepare("SELECT id, username, role, status FROM users WHERE username = ? AND password = ?");
-    $stmt->bind_param('ss', $username, $password);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
-    if ($result->num_rows > 0) {
-        $user = $result->fetch_assoc();
-
-        // User found and password matches
-        session_start();
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['role'] = $user['role'];
-        $_SESSION['username'] = $username; // Store username in session
-
-        // Check user role and approval status
-        if ($user['role'] == 'customer') {
-            // Redirect to the customer dashboard (index.php)
-            header("Location: index.php");
-            exit;
-        } elseif (($user['role'] == 'owner' || $user['role'] == 'admin' || $user['role'] == 'courier') && $user['status'] == 'approved') {
-            // Redirect to the respective dashboard if approved
-            $role_dashboard = $user['role'] . '_dashboard.php';
-            header("Location: $role_dashboard");
-            exit;
-        } elseif (($user['role'] == 'admin' || $user['role'] == 'courier') && $user['status'] != 'approved') {
-            // User is not approved yet
-            $error_message = "Your account is pending approval by the owner.";
-            header("Location: login.php?error=" . urlencode($error_message));
-            exit;
-        }
-    } else {
-        // Invalid username or password
-        $error_message = "Invalid username or password!";
-        header("Location: login.php?error=" . urlencode($error_message));
-        exit;
-    }
-
-    $stmt->close();
+if (!isset($_SESSION['login_attempts'])) {
+    $_SESSION['login_attempts'] = ['count' => 0, 'locked_until' => 0];
 }
 
-$conn->close();
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $now = time();
+    if ($_SESSION['login_attempts']['locked_until'] > $now) {
+        $waitSec = $_SESSION['login_attempts']['locked_until'] - $now;
+        $error_message = "Too many failed attempts. Please wait {$waitSec} seconds before trying again.";
+    } elseif (!verify_csrf()) {
+        $error_message = 'Invalid security token. Please refresh and try again.';
+    } else {
+        $selectedRole = trim($_POST['role'] ?? '');
+        $usernameInput = trim($_POST['username'] ?? '');
+        $passwordInput = $_POST['password'] ?? '';
+
+        if ($selectedRole === '' || $usernameInput === '' || $passwordInput === '') {
+            $error_message = 'Please select your role and enter both username and password.';
+        } else {
+            $conn = db();
+            $stmt = $conn->prepare('SELECT id, username, password, role, status FROM users WHERE username = ? LIMIT 1');
+            $stmt->bind_param('s', $usernameInput);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $user = $result->fetch_assoc();
+            $stmt->close();
+
+            $passwordValid = false;
+            $needsRehash = false;
+            if ($user) {
+                $stored = (string)$user['password'];
+                if (password_verify($passwordInput, $stored)) {
+                    $passwordValid = true;
+                    $needsRehash = password_needs_rehash($stored, PASSWORD_DEFAULT);
+                } elseif (hash_equals($stored, $passwordInput)) {
+                    // Seamless upgrade path for legacy seeded plaintext demo accounts
+                    $passwordValid = true;
+                    $needsRehash = true;
+                }
+            }
+
+            if ($user && $passwordValid && $user['role'] === $selectedRole) {
+                if ($user['role'] !== 'customer' && $user['status'] !== 'approved') {
+                    $error_message = ($user['status'] === 'rejected')
+                        ? 'Your account registration was rejected by the owner.'
+                        : 'Your account is pending approval by the owner.';
+                } else {
+                    if ($needsRehash) {
+                        $newHash = password_hash($passwordInput, PASSWORD_DEFAULT);
+                        $up = $conn->prepare('UPDATE users SET password = ? WHERE id = ?');
+                        $up->bind_param('si', $newHash, $user['id']);
+                        $up->execute();
+                        $up->close();
+                    }
+
+                    $_SESSION['login_attempts'] = ['count' => 0, 'locked_until' => 0];
+                    session_regenerate_id(true);
+                    $_SESSION['user_id'] = (int)$user['id'];
+                    $_SESSION['role'] = $user['role'];
+                    $_SESSION['username'] = $user['username'];
+
+                    header('Location: ' . role_home($user['role']));
+                    exit;
+                }
+            } else {
+                $_SESSION['login_attempts']['count']++;
+                if ($_SESSION['login_attempts']['count'] >= 5) {
+                    $_SESSION['login_attempts']['locked_until'] = $now + 120;
+                    $_SESSION['login_attempts']['count'] = 0;
+                    $error_message = 'Too many failed attempts. Please try again in 2 minutes.';
+                } else {
+                    $error_message = 'Invalid role, username, or password.';
+                }
+            }
+        }
+    }
+}
+
+if (isset($_GET['error']) && $error_message === '') {
+    $error_message = $_GET['error'];
+}
+if (isset($_GET['success'])) {
+    $success_message = $_GET['success'];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -68,120 +100,85 @@ $conn->close();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Guspart Autoshop</title>
+    <title>Sign In - Guspart Autoshop</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 
-<body>
-    <header class="site-header">
-        <div class="header-inner">
-            <a href="login.php" class="brand-logo">
+<body class="auth-page">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <main id="main-content" class="auth-shell">
+        <div class="auth-box">
+            <a href="login.php" class="auth-brand-top">
                 <img src="gambar1.png" alt="Guspart Autoshop Logo">
-                <span class="brand-name">Guspart Autoshop</span>
+                <span>Guspart Autoshop</span>
             </a>
-            <nav class="site-nav" aria-label="Primary navigation">
-                <a href="index.php">Home</a>
-                <a href="product.php">Products</a>
-                <a href="order.php">Order</a>
-                <a href="#footer">Contact Us</a>
-                <a href="login.php" class="nav-cta active">Login</a>
-            </nav>
-            <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
-                <span></span>
-                <span></span>
-                <span></span>
-            </button>
-        </div>
-    </header>
 
-    <main class="auth-main">
-        <div class="container">
-            <div class="auth-grid">
-                <div class="auth-intro">
-                    <span class="hero-eyebrow">Trusted Motorcycle &amp; Auto Spare Parts</span>
-                    <h1>Welcome to<br>Guspart Autoshop</h1>
-                    <p>Sign in to browse genuine spare parts, track your orders, or manage store inventory and deliveries from one unified platform.</p>
-                    <div class="auth-switch">
-                        <span>Don't have an account?</span>
-                        <a href="register.php" class="btn btn-outline btn-sm">Register here</a>
+            <div class="auth-card">
+                <h1>Sign In</h1>
+                <p class="auth-card-subtitle">Access your customer store or staff portal.</p>
+
+                <?php if ($error_message !== ''): ?>
+                    <div class="alert alert-error" role="alert" aria-live="polite">
+                        <?= e($error_message) ?>
                     </div>
-                </div>
+                <?php endif; ?>
 
-                <div class="auth-card">
-                    <h2>Sign In</h2>
-                    <p class="auth-card-subtitle">Enter your role and credentials to continue.</p>
+                <?php if ($success_message !== ''): ?>
+                    <div class="alert alert-success" role="status" aria-live="polite">
+                        <?= e($success_message) ?>
+                    </div>
+                <?php endif; ?>
 
-                    <?php if (!empty($error_message)): ?>
-                        <div class="alert alert-error">
-                            <?php echo htmlspecialchars($error_message); ?>
-                        </div>
-                    <?php endif; ?>
+                <form method="POST" data-loading-text="Signing in...">
+                    <?= csrf_field() ?>
 
-                    <?php if (isset($_GET['error'])): ?>
-                        <div class="alert alert-error">
-                            <?php echo htmlspecialchars($_GET['error']); ?>
-                        </div>
-                    <?php endif; ?>
+                    <div class="form-group">
+                        <label for="role">Role</label>
+                        <select id="role" name="role" required>
+                            <option value="" disabled <?= empty($_POST['role']) ? 'selected' : '' ?>>Select your role</option>
+                            <option value="customer" <?= (($_POST['role'] ?? '') === 'customer') ? 'selected' : '' ?>>Customer</option>
+                            <option value="admin" <?= (($_POST['role'] ?? '') === 'admin') ? 'selected' : '' ?>>Admin</option>
+                            <option value="courier" <?= (($_POST['role'] ?? '') === 'courier') ? 'selected' : '' ?>>Kurir (Courier)</option>
+                            <option value="owner" <?= (($_POST['role'] ?? '') === 'owner') ? 'selected' : '' ?>>Owner</option>
+                        </select>
+                    </div>
 
-                    <form method="POST">
-                        <div class="form-group">
-                            <label for="role">Role</label>
-                            <select id="role" name="role" required>
-                                <option value="" disabled selected>-- Select Role --</option>
-                                <option value="admin">Admin</option>
-                                <option value="customer">Customer</option>
-                                <option value="courier">Kurir</option>
-                                <option value="owner">Owner</option>
-                            </select>
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input id="username" type="text" name="username" value="<?= e($_POST['username'] ?? '') ?>" placeholder="Enter your username" autocomplete="username" required>
+                    </div>
+
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                            <label for="password" style="margin-bottom: 0;">Password</label>
+                            <a href="forgot_password.php" style="font-size: 0.82rem; font-weight: 600; color: var(--primary);">Forgot password?</a>
                         </div>
-                        <div class="form-group">
-                            <label for="username">Username</label>
-                            <input id="username" type="text" name="username" placeholder="Enter your username" required>
+                        <div class="password-wrap">
+                            <input id="password" type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+                            <button type="button" class="password-toggle" data-target="password" aria-label="Show password" aria-pressed="false">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                            </button>
                         </div>
-                        <div class="form-group">
-                            <label for="password">Password</label>
-                            <input id="password" type="password" name="password" placeholder="Enter your password" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary btn-block btn-lg" name="submit">Login</button>
-                        <div class="auth-footer-link">
-                            <a href="forgot_password.php">Forgot Password?</a>
-                        </div>
-                    </form>
-                </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block btn-lg" name="submit">Sign In</button>
+
+                    <div class="auth-footer-link">
+                        Don't have an account? <a href="register.php">Create one</a>
+                    </div>
+                </form>
             </div>
+
+            <p class="auth-meta-footer">&copy; 2024 Guspart Autoshop</p>
         </div>
     </main>
-
-    <section class="features-band" id="footer">
-        <div class="container">
-            <div class="features-grid">
-                <div class="feature-item">
-                    <div class="feature-icon"><img src="gambar3.png" alt="Free Shipping"></div>
-                    <div>
-                        <h3>Free Shipping</h3>
-                        <p>Fast, reliable delivery straight to your garage.</p>
-                    </div>
-                </div>
-                <div class="feature-item">
-                    <div class="feature-icon"><img src="gambar4.png" alt="24/7 Support"></div>
-                    <div>
-                        <h3>24/7 Support</h3>
-                        <p>Ready to help you find the exact compatible part.</p>
-                    </div>
-                </div>
-                <div class="feature-item">
-                    <div class="feature-icon"><img src="gambar5.png" alt="Free Return"></div>
-                    <div>
-                        <h3>Free Return</h3>
-                        <p>Hassle-free returns if a component doesn't fit.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
 
     <script src="assets/js/main.js"></script>
 </body>

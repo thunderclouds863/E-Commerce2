@@ -1,57 +1,43 @@
 <?php
-session_start();
-$isLoggedIn = isset($_SESSION['username']);
-if (!$isLoggedIn) {
-    header("Location: login.php");
-    exit();
-}
+require_once __DIR__ . '/includes/bootstrap.php';
+require_login();
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-  die("Connection failed: " . $conn->connect_error);
-}
+$conn = db();
 
 if (!isset($_SESSION['cart'])) {
-  $_SESSION['cart'] = [];
+    $_SESSION['cart'] = [];
 }
 
-if (isset($_GET['add_to_cart'])) {
-  $product_id = $_GET['add_to_cart'];
-  if ($product_id > 0) {
-    if (!isset($_SESSION['cart'][$product_id])) {
-      $_SESSION['cart'][$product_id] = ['quantity' => 0];
-    }
-    $_SESSION['cart'][$product_id]['quantity']++;
-  }
-}
-
-if (isset($_GET['remove_from_cart'])) {
-  $product_id = $_GET['remove_from_cart'];
-  if (isset($_SESSION['cart'][$product_id])) {
-    unset($_SESSION['cart'][$product_id]);
-  }
-}
-
-if (isset($_POST['update_quantity'])) {
-  if (isset($_POST['quantity']) && is_array($_POST['quantity'])) {
-    foreach ($_POST['quantity'] as $product_id => $quantity) {
-      if (isset($_SESSION['cart'][$product_id])) {
-        $quantity = intval($quantity);
-        if ($quantity > 0) {
-          $_SESSION['cart'][$product_id]['quantity'] = $quantity;
+if (isset($_GET['add_to_cart']) && ctype_digit((string)$_GET['add_to_cart'])) {
+    $product_id = (int)$_GET['add_to_cart'];
+    if ($product_id > 0) {
+        if (!isset($_SESSION['cart'][$product_id])) {
+            $_SESSION['cart'][$product_id] = ['quantity' => 0];
         }
-      }
+        $_SESSION['cart'][$product_id]['quantity'] = min(10, (int)$_SESSION['cart'][$product_id]['quantity'] + 1);
     }
-  }
 }
 
-$usernameDisplay = htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8');
+if (isset($_GET['remove_from_cart']) && ctype_digit((string)$_GET['remove_from_cart'])) {
+    $product_id = (int)$_GET['remove_from_cart'];
+    unset($_SESSION['cart'][$product_id]);
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_quantity']) && verify_csrf()) {
+    if (isset($_POST['quantity']) && is_array($_POST['quantity'])) {
+        foreach ($_POST['quantity'] as $product_id => $quantity) {
+            $pid = (int)$product_id;
+            if (isset($_SESSION['cart'][$pid])) {
+                $qty = max(1, min(10, (int)$quantity));
+                $_SESSION['cart'][$pid]['quantity'] = $qty;
+            }
+        }
+    }
+}
+
+$usernameDisplay = e($_SESSION['username']);
 $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
+$cartCount = cart_item_count();
 $grand_total = 0;
 ?>
 <!DOCTYPE html>
@@ -68,6 +54,8 @@ $grand_total = 0;
 </head>
 
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <header class="site-header">
     <div class="header-inner">
       <a href="index.php" class="brand-logo">
@@ -77,21 +65,17 @@ $grand_total = 0;
       <nav class="site-nav" aria-label="Primary navigation">
         <a href="index.php">Home</a>
         <a href="product.php">Products</a>
-        <a href="order.php" class="active">Order</a>
+        <a href="order.php" class="active">Order<?= $cartCount > 0 ? " ({$cartCount})" : '' ?></a>
         <a href="order-history.php">Order History</a>
         <a href="#footer">Contact Us</a>
         <div class="user-menu">
-          <?php if ($isLoggedIn): ?>
-            <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
-              <span class="user-avatar"><?= $avatarInitial ?></span>
-              <span><?= $usernameDisplay ?></span>
-            </button>
-            <div class="dropdown-menu">
-              <a href="logout.php">Logout</a>
-            </div>
-          <?php else: ?>
-            <a href="login.php" class="nav-cta">Login</a>
-          <?php endif; ?>
+          <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+            <span class="user-avatar"><?= $avatarInitial ?></span>
+            <span><?= $usernameDisplay ?></span>
+          </button>
+          <div class="dropdown-menu">
+            <a href="logout.php">Logout</a>
+          </div>
         </div>
       </nav>
       <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
@@ -102,7 +86,7 @@ $grand_total = 0;
     </div>
   </header>
 
-  <main class="page-section">
+  <main id="main-content" class="page-section">
     <div class="container">
       <div class="section-header">
         <div>
@@ -122,60 +106,56 @@ $grand_total = 0;
         <?php else: ?>
           <div class="cart-list">
             <?php
+            $stmtProd = $conn->prepare('SELECT * FROM products WHERE id = ? LIMIT 1');
             foreach ($_SESSION['cart'] as $product_id => $item) {
-              if ($product_id <= 0) {
+              $pid = (int)$product_id;
+              if ($pid <= 0 || !is_array($item) || !isset($item['quantity'])) {
                 unset($_SESSION['cart'][$product_id]);
                 continue;
               }
 
-              if (is_array($item) && isset($item['quantity'])) {
-                $pid = intval($product_id);
-                $sql = "SELECT * FROM products WHERE id = $pid";
-                $result = $conn->query($sql);
+              $stmtProd->bind_param('i', $pid);
+              $stmtProd->execute();
+              $product = $stmtProd->get_result()->fetch_assoc();
 
-                if ($result && $result->num_rows > 0) {
-                  $product = $result->fetch_assoc();
-                  $total_price = $product['price'] * $item['quantity'];
-                  $grand_total += $total_price;
+              if ($product) {
+                $qty = max(1, (int)$item['quantity']);
+                $total_price = $product['price'] * $qty;
+                $grand_total += $total_price;
+                $image_src = resolve_product_image((int)$product['id'], $product['image']);
+                ?>
+                <div class="cart-item">
+                  <img class="cart-item-img" src="<?= e($image_src) ?>" alt="<?= e($product['name']) ?>">
 
-                  $product_image_name = 'produk' . $product['id'];
-                  $image_extension = pathinfo($product['image'], PATHINFO_EXTENSION);
-                  $image_path = 'uploads/' . $product_image_name . '.' . $image_extension;
-                  $image_src = file_exists($image_path) ? $image_path : 'gambar2.png';
-                  ?>
-                  <div class="cart-item">
-                    <img class="cart-item-img" src="<?= htmlspecialchars($image_src) ?>" alt="<?= htmlspecialchars($product['name']) ?>">
-
-                    <div class="cart-item-info">
-                      <h3><?= htmlspecialchars($product['name']) ?></h3>
-                      <p class="price">
-                        Rp <?= number_format($product['price'], 0, ',', '.') ?> &times; <?= (int)$item['quantity'] ?>
-                        &nbsp;&middot;&nbsp;
-                        <strong style="color: var(--primary);">Rp <?= number_format($total_price, 0, ',', '.') ?></strong>
-                      </p>
-                    </div>
-
-                    <div class="cart-item-actions">
-                      <form action="order.php" method="POST" class="update-quantity-form" style="display: flex; align-items: center; gap: 10px;">
-                        <input type="hidden" name="update_quantity" value="1">
-                        <input type="number" class="qty-input" name="quantity[<?= $pid ?>]" value="<?= (int)$item['quantity'] ?>" min="1" max="10" aria-label="Quantity for <?= htmlspecialchars($product['name']) ?>">
-                        <a href="order.php?remove_from_cart=<?= $pid ?>" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to remove this item?');">Remove</a>
-                      </form>
-                    </div>
+                  <div class="cart-item-info">
+                    <h3><?= e($product['name']) ?></h3>
+                    <p class="price">
+                      <?= format_rp($product['price']) ?> &times; <?= $qty ?>
+                      &nbsp;&middot;&nbsp;
+                      <strong style="color: var(--primary);"><?= format_rp($total_price) ?></strong>
+                    </p>
                   </div>
-                  <?php
-                } else {
-                  echo "<p>Product not found for ID: " . htmlspecialchars($product_id) . "</p>";
-                }
+
+                  <div class="cart-item-actions">
+                    <form action="order.php" method="POST" class="update-quantity-form" style="display: flex; align-items: center; gap: 10px;">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="update_quantity" value="1">
+                      <input type="number" class="qty-input" name="quantity[<?= $pid ?>]" value="<?= $qty ?>" min="1" max="10" aria-label="Quantity for <?= e($product['name']) ?>">
+                      <a href="order.php?remove_from_cart=<?= $pid ?>" class="btn btn-danger btn-sm" onclick="return confirm('Remove this item from your cart?');">Remove</a>
+                    </form>
+                  </div>
+                </div>
+                <?php
               }
             }
+            $stmtProd->close();
             ?>
           </div>
 
           <div class="cart-footer">
             <div>
               <div class="cart-total-label">Estimated Total</div>
-              <div class="cart-total-value">Rp <?= number_format($grand_total, 0, ',', '.') ?></div>
+              <div class="cart-total-value"><?= format_rp($grand_total) ?></div>
             </div>
             <a href="checkout.php" class="btn btn-primary btn-lg">Proceed to Checkout &rarr;</a>
           </div>
@@ -230,6 +210,3 @@ $grand_total = 0;
 </body>
 
 </html>
-<?php
-$conn->close();
-?>

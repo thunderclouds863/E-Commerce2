@@ -1,46 +1,53 @@
 <?php
-session_start();
-if (!isset($_SESSION['role']) || $_SESSION['role'] != 'courier') {
-    header("Location: index.php");
+require_once __DIR__ . '/includes/bootstrap.php';
+require_role(['courier']);
+
+if (isset($_GET['logout'])) {
+    header('Location: logout.php');
     exit();
 }
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
-$conn = new mysqli($servername, $username, $password, $dbname);
+$conn = db();
+$flashSuccess = '';
+$flashError = '';
 
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
+    if (!verify_csrf()) {
+        $flashError = 'Invalid security token. Please try again.';
+    } else {
+        $order_id = (int)($_POST['order_id'] ?? 0);
+        $new_status = trim($_POST['new_status'] ?? '');
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_status'])) {
-    if (isset($_POST['order_id']) && isset($_POST['new_status'])) {
-        $order_id = $_POST['order_id'];
-        $new_status = $_POST['new_status'];
+        $allowedMap = [
+            'Siap Dikirim' => 'Dikirim',
+            'Dikirim'      => 'Sampai Tujuan',
+        ];
 
-        $update_query = "UPDATE orders SET status='$new_status' WHERE id=$order_id";
-        if (mysqli_query($conn, $update_query)) {
-            header("Location: courier_dashboard.php");
-            exit();
+        $stmtCheck = $conn->prepare('SELECT status FROM orders WHERE id = ? LIMIT 1');
+        $stmtCheck->bind_param('i', $order_id);
+        $stmtCheck->execute();
+        $rowCheck = $stmtCheck->get_result()->fetch_assoc();
+        $stmtCheck->close();
+
+        if ($rowCheck && isset($allowedMap[$rowCheck['status']]) && $allowedMap[$rowCheck['status']] === $new_status) {
+            $stmtUpd = $conn->prepare('UPDATE orders SET status = ? WHERE id = ?');
+            $stmtUpd->bind_param('si', $new_status, $order_id);
+            if ($stmtUpd->execute()) {
+                $flashSuccess = "Order #{$order_id} marked as {$new_status}.";
+            } else {
+                $flashError = 'Failed to update delivery status.';
+            }
+            $stmtUpd->close();
         } else {
-            echo "Error updating record: " . mysqli_error($conn);
+            $flashError = 'Invalid delivery status transition.';
         }
     }
 }
 
-$query = "SELECT * FROM orders WHERE status IN ('Siap Dikirim', 'Dikirim')";
-$result = mysqli_query($conn, $query);
+$result = $conn->query("SELECT * FROM orders WHERE status IN ('Siap Dikirim', 'Dikirim') ORDER BY created_at ASC");
 
-if (isset($_GET['logout'])) {
-    session_destroy();
-    header("Location: index.php");
-    exit();
-}
-
-$usernameDisplay = htmlspecialchars($_SESSION['username'] ?? 'Courier', ENT_QUOTES, 'UTF-8');
-$avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'C', 0, 1));
+$usernameDisplay = e($_SESSION['username']);
+$avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -56,6 +63,8 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'C', 0, 1));
 </head>
 
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <header class="site-header">
         <div class="header-inner">
             <a href="courier_dashboard.php" class="brand-logo">
@@ -71,7 +80,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'C', 0, 1));
                         <span><?= $usernameDisplay ?></span>
                     </button>
                     <div class="dropdown-menu">
-                        <a href="?logout=true">Logout</a>
+                        <a href="logout.php">Logout</a>
                     </div>
                 </div>
             </nav>
@@ -83,7 +92,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'C', 0, 1));
         </div>
     </header>
 
-    <main class="page-section">
+    <main id="main-content" class="page-section">
         <div class="container">
             <div class="section-header">
                 <div>
@@ -91,6 +100,13 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'C', 0, 1));
                     <p>Update shipment status as packages leave the warehouse and reach customers.</p>
                 </div>
             </div>
+
+            <?php if ($flashSuccess !== ''): ?>
+                <div class="alert alert-success" role="status" aria-live="polite"><?= e($flashSuccess) ?></div>
+            <?php endif; ?>
+            <?php if ($flashError !== ''): ?>
+                <div class="alert alert-error" role="alert" aria-live="polite"><?= e($flashError) ?></div>
+            <?php endif; ?>
 
             <div class="surface-card" style="padding: 0; overflow: hidden;">
                 <div class="table-responsive" style="border: none; border-radius: 0;">
@@ -104,25 +120,27 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'C', 0, 1));
                             </tr>
                         </thead>
                         <tbody>
-                            <?php if ($result && mysqli_num_rows($result) > 0): ?>
-                                <?php while ($row = mysqli_fetch_assoc($result)): ?>
+                            <?php if ($result && $result->num_rows > 0): ?>
+                                <?php while ($row = $result->fetch_assoc()): ?>
                                     <tr>
                                         <td><strong>#<?= (int)$row['id'] ?></strong></td>
-                                        <td><?= htmlspecialchars($row['address'] ?? '-') ?></td>
+                                        <td><?= e($row['address'] ?? '-') ?></td>
                                         <td>
-                                            <span class="badge <?= ($row['status'] == 'Dikirim') ? 'badge-info' : 'badge-warning' ?>">
-                                                <?= htmlspecialchars($row['status']) ?>
+                                            <span class="badge <?= status_badge_class($row['status']) ?>">
+                                                <?= e($row['status']) ?>
                                             </span>
                                         </td>
                                         <td>
-                                            <?php if ($row['status'] == 'Siap Dikirim'): ?>
+                                            <?php if ($row['status'] === 'Siap Dikirim'): ?>
                                                 <form method="POST" style="display: inline;">
+                                                    <?= csrf_field() ?>
                                                     <input type="hidden" name="order_id" value="<?= (int)$row['id'] ?>">
                                                     <input type="hidden" name="new_status" value="Dikirim">
                                                     <button type="submit" name="update_status" class="btn btn-primary btn-sm">Mark as Dikirim</button>
                                                 </form>
-                                            <?php elseif ($row['status'] == 'Dikirim'): ?>
+                                            <?php elseif ($row['status'] === 'Dikirim'): ?>
                                                 <form method="POST" style="display: inline;">
+                                                    <?= csrf_field() ?>
                                                     <input type="hidden" name="order_id" value="<?= (int)$row['id'] ?>">
                                                     <input type="hidden" name="new_status" value="Sampai Tujuan">
                                                     <button type="submit" name="update_status" class="btn btn-success btn-sm">Mark as Sampai Tujuan</button>
@@ -153,6 +171,3 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'C', 0, 1));
 </body>
 
 </html>
-<?php
-$conn->close();
-?>

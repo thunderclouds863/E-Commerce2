@@ -1,12 +1,10 @@
 <?php
-session_start();
-$isLoggedIn = isset($_SESSION['username']);
-if (!$isLoggedIn) {
-    header("Location: login.php");
-    exit();
-}
-$usernameDisplay = htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8');
+require_once __DIR__ . '/includes/bootstrap.php';
+require_login();
+
+$usernameDisplay = e($_SESSION['username']);
 $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
+$cartCount = cart_item_count();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -22,6 +20,8 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
 </head>
 
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <header class="site-header">
         <div class="header-inner">
             <a href="index.php" class="brand-logo">
@@ -29,23 +29,19 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
                 <span class="brand-name">Guspart Autoshop</span>
             </a>
             <nav class="site-nav" aria-label="Primary navigation">
-                <a href="#hero" class="active">Home</a>
+                <a href="index.php" class="active">Home</a>
                 <a href="product.php">Products</a>
-                <a href="order.php">Order</a>
+                <a href="order.php">Order<?= $cartCount > 0 ? " ({$cartCount})" : '' ?></a>
                 <a href="order-history.php">Order History</a>
                 <a href="#footer">Contact Us</a>
                 <div class="user-menu">
-                    <?php if ($isLoggedIn): ?>
-                        <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
-                            <span class="user-avatar"><?= $avatarInitial ?></span>
-                            <span><?= $usernameDisplay ?></span>
-                        </button>
-                        <div class="dropdown-menu">
-                            <a href="logout.php">Logout</a>
-                        </div>
-                    <?php else: ?>
-                        <a href="login.php" class="nav-cta">Login</a>
-                    <?php endif; ?>
+                    <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+                        <span class="user-avatar"><?= $avatarInitial ?></span>
+                        <span><?= $usernameDisplay ?></span>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a href="logout.php">Logout</a>
+                    </div>
                 </div>
             </nav>
             <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
@@ -56,7 +52,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
         </div>
     </header>
 
-    <main>
+    <main id="main-content">
         <section class="hero-section" id="hero">
             <div class="container">
                 <div class="hero-grid">

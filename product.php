@@ -1,52 +1,36 @@
 <?php
-session_start();
-$isLoggedIn = isset($_SESSION['username']);
-if (!$isLoggedIn) {
-  header("Location: login.php");
-  exit();
-}
+require_once __DIR__ . '/includes/bootstrap.php';
+require_login();
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-  die("Connection failed: " . $conn->connect_error);
-}
+$conn = db();
 
 if (!isset($_SESSION['cart'])) {
-  $_SESSION['cart'] = [];
+    $_SESSION['cart'] = [];
 }
 
 $addedNotice = false;
-if (isset($_GET['add_to_cart'])) {
-  $product_id = $_GET['add_to_cart'];
-  if (isset($_SESSION['cart'][$product_id])) {
-    $_SESSION['cart'][$product_id]['quantity']++;
-  } else {
-    $_SESSION['cart'][$product_id] = ['quantity' => 1];
-  }
-  $addedNotice = true;
+if (isset($_GET['add_to_cart']) && ctype_digit((string)$_GET['add_to_cart'])) {
+    $product_id = (int)$_GET['add_to_cart'];
+    $chk = $conn->prepare('SELECT id, stock FROM products WHERE id = ? LIMIT 1');
+    $chk->bind_param('i', $product_id);
+    $chk->execute();
+    $prod = $chk->get_result()->fetch_assoc();
+    $chk->close();
+
+    if ($prod && (int)$prod['stock'] > 0) {
+        if (isset($_SESSION['cart'][$product_id])) {
+            $_SESSION['cart'][$product_id]['quantity'] = min(10, (int)$_SESSION['cart'][$product_id]['quantity'] + 1);
+        } else {
+            $_SESSION['cart'][$product_id] = ['quantity' => 1];
+        }
+        $addedNotice = true;
+    }
 }
 
-$sql = "SELECT * FROM products";
-$result = $conn->query($sql);
-
-if (!$result) {
-  die("Error: " . $conn->error);
-}
-
-$usernameDisplay = htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8');
+$result = $conn->query('SELECT * FROM products ORDER BY id ASC');
+$usernameDisplay = e($_SESSION['username']);
 $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
-$cartCount = 0;
-foreach ($_SESSION['cart'] as $cItem) {
-  if (is_array($cItem) && isset($cItem['quantity'])) {
-    $cartCount += (int)$cItem['quantity'];
-  }
-}
+$cartCount = cart_item_count();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -62,6 +46,8 @@ foreach ($_SESSION['cart'] as $cItem) {
 </head>
 
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <header class="site-header">
     <div class="header-inner">
       <a href="index.php" class="brand-logo">
@@ -71,21 +57,17 @@ foreach ($_SESSION['cart'] as $cItem) {
       <nav class="site-nav" aria-label="Primary navigation">
         <a href="index.php">Home</a>
         <a href="product.php" class="active">Products</a>
-        <a href="order.php">Order<?= $cartCount > 0 ? " ($cartCount)" : "" ?></a>
+        <a href="order.php">Order<?= $cartCount > 0 ? " ({$cartCount})" : '' ?></a>
         <a href="order-history.php">Order History</a>
         <a href="#footer">Contact Us</a>
         <div class="user-menu">
-          <?php if ($isLoggedIn): ?>
-            <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
-              <span class="user-avatar"><?= $avatarInitial ?></span>
-              <span><?= $usernameDisplay ?></span>
-            </button>
-            <div class="dropdown-menu">
-              <a href="logout.php">Logout</a>
-            </div>
-          <?php else: ?>
-            <a href="login.php" class="nav-cta">Login</a>
-          <?php endif; ?>
+          <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+            <span class="user-avatar"><?= $avatarInitial ?></span>
+            <span><?= $usernameDisplay ?></span>
+          </button>
+          <div class="dropdown-menu">
+            <a href="logout.php">Logout</a>
+          </div>
         </div>
       </nav>
       <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
@@ -96,7 +78,7 @@ foreach ($_SESSION['cart'] as $cItem) {
     </div>
   </header>
 
-  <main>
+  <main id="main-content">
     <section class="page-section" id="products">
       <div class="container">
         <div class="section-header">
@@ -104,11 +86,11 @@ foreach ($_SESSION['cart'] as $cItem) {
             <h1>Spare Parts Catalog</h1>
             <p>Browse quality-tested components ready to ship to your workshop.</p>
           </div>
-          <a href="order.php" class="btn btn-outline">View Cart<?= $cartCount > 0 ? " ($cartCount)" : "" ?></a>
+          <a href="order.php" class="btn btn-outline">View Cart<?= $cartCount > 0 ? " ({$cartCount})" : '' ?></a>
         </div>
 
         <?php if ($addedNotice): ?>
-          <div class="alert alert-success">
+          <div class="alert alert-success" role="status" aria-live="polite">
             Item added to your cart. <a href="order.php" style="text-decoration: underline; font-weight: 600;">Go to Cart &rarr;</a>
           </div>
         <?php endif; ?>
@@ -118,41 +100,36 @@ foreach ($_SESSION['cart'] as $cItem) {
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
-          <input type="text" id="searchBar" class="search-input" placeholder="Search spare parts by name...">
+          <input type="text" id="searchBar" class="search-input" placeholder="Search spare parts by name..." aria-label="Search spare parts by name">
         </div>
 
         <div class="product-grid" id="productGrid">
-          <?php if ($result->num_rows > 0): ?>
+          <?php if ($result && $result->num_rows > 0): ?>
             <?php while ($row = $result->fetch_assoc()): ?>
               <?php
-              $product_image_name = 'produk' . $row['id'];
-              $image_extension = pathinfo($row['image'], PATHINFO_EXTENSION);
-              $image_path = 'uploads/' . $product_image_name . '.' . $image_extension;
-
-              if (file_exists($image_path)) {
-                $image_src = $image_path;
-              } elseif (!empty($row['image']) && file_exists($row['image'])) {
-                $image_src = $row['image'];
-              } else {
-                $image_src = 'gambar2.png';
-              }
-              $stockClass = ((int)$row['stock'] <= 10) ? 'stock-pill low' : 'stock-pill';
+              $image_src = resolve_product_image((int)$row['id'], $row['image']);
+              $stockNum = (int)$row['stock'];
+              $stockClass = ($stockNum <= 10) ? 'stock-pill low' : 'stock-pill';
               ?>
-              <article class="product-card" data-name="<?= htmlspecialchars($row['name']) ?>">
+              <article class="product-card" data-name="<?= e($row['name']) ?>">
                 <div class="product-thumb">
-                  <img src="<?= htmlspecialchars($image_src) ?>" alt="<?= htmlspecialchars($row['name']) ?>">
+                  <img src="<?= e($image_src) ?>" alt="<?= e($row['name']) ?>">
                 </div>
                 <div class="product-body">
                   <div class="product-meta-row">
                     <span class="stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
-                    <span class="<?= $stockClass ?>">Stock: <?= (int)$row['stock'] ?></span>
+                    <span class="<?= $stockClass ?>"><?= $stockNum > 0 ? "Stock: {$stockNum}" : 'Out of Stock' ?></span>
                   </div>
-                  <h3><?= htmlspecialchars($row['name']) ?></h3>
-                  <p class="product-desc"><?= htmlspecialchars($row['description']) ?></p>
-                  <p class="product-price">Rp <?= number_format($row['price'], 0, ',', '.') ?></p>
+                  <h3><?= e($row['name']) ?></h3>
+                  <p class="product-desc"><?= e($row['description']) ?></p>
+                  <p class="product-price"><?= format_rp($row['price']) ?></p>
                   <div class="product-actions">
-                    <a href="?add_to_cart=<?= (int)$row['id']; ?>" class="btn btn-primary btn-sm">Add to Cart</a>
-                    <a href="product-details.php?id=<?= (int)$row['id']; ?>" class="btn btn-outline btn-sm">Reviews</a>
+                    <?php if ($stockNum > 0): ?>
+                      <a href="?add_to_cart=<?= (int)$row['id'] ?>" class="btn btn-primary btn-sm">Add to Cart</a>
+                    <?php else: ?>
+                      <button type="button" class="btn btn-outline btn-sm" disabled>Out of Stock</button>
+                    <?php endif; ?>
+                    <a href="product-details.php?id=<?= (int)$row['id'] ?>" class="btn btn-outline btn-sm">Reviews</a>
                   </div>
                 </div>
               </article>
@@ -163,44 +140,6 @@ foreach ($_SESSION['cart'] as $cItem) {
               <p>Check back soon for newly stocked spare parts.</p>
             </div>
           <?php endif; ?>
-        </div>
-      </div>
-    </section>
-
-    <section class="features-band">
-      <div class="container">
-        <div class="features-grid">
-          <div class="feature-item">
-            <div class="feature-icon"><img src="gambar3.png" alt="Free Shipping"></div>
-            <div>
-              <h3>Free Shipping</h3>
-              <p>Fast, dependable delivery directly to your doorstep.</p>
-            </div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon"><img src="gambar4.png" alt="24/7 Support"></div>
-            <div>
-              <h3>24/7 Support</h3>
-              <p>Dedicated assistance for part fitment and order help.</p>
-            </div>
-          </div>
-          <div class="feature-item">
-            <div class="feature-icon"><img src="gambar5.png" alt="Free Return"></div>
-            <div>
-              <h3>Free Return</h3>
-              <p>Easy return guarantee if a spare part doesn't match.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="promo-section">
-      <div class="container">
-        <div class="promo-card">
-          <h2>Upgrade Your Ride Today! Special Discounts End on Sunday!</h2>
-          <p>Stock up on essential maintenance parts while weekend pricing lasts.</p>
-          <a href="#products" class="btn btn-primary btn-lg">Back to Top &uarr;</a>
         </div>
       </div>
     </section>
