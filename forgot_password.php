@@ -39,10 +39,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $mailDispatched = true;
 
             if ($user) {
-                // Cryptographically secure 32-byte token, stored as SHA-256 hash + 15-minute expiry
                 $rawToken = bin2hex(random_bytes(32));
                 $tokenHash = hash('sha256', $rawToken);
-                $expiresAt = time() + 900; // 15 minutes
+                $expiresAt = time() + 900;
                 $storedPayload = $tokenHash . '|' . $expiresAt;
 
                 $upd = $conn->prepare('UPDATE users SET reset_code = ? WHERE id = ?');
@@ -89,48 +88,115 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 
-<body class="auth-page">
+<body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
-    <main id="main-content" class="auth-shell">
-        <div class="auth-box">
-            <a href="login.php" class="auth-brand-top">
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="login.php" class="brand-logo">
                 <img src="gambar1.png" alt="Guspart Autoshop Logo">
-                <span>Guspart Autoshop</span>
+                <span class="brand-name">Guspart Autoshop</span>
             </a>
+            <nav class="site-nav" aria-label="Primary navigation">
+                <a href="index.php">Home</a>
+                <a href="product.php">Products</a>
+                <a href="order.php">Order</a>
+                <a href="#footer">Contact Us</a>
+                <a href="login.php" class="nav-cta">Login</a>
+            </nav>
+            <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
 
-            <div class="auth-card">
-                <h1>Forgot Password</h1>
-                <p class="auth-card-subtitle">Enter your registered email and we'll generate a time-limited recovery link.</p>
-
-                <?php if ($statusMessage !== ''): ?>
-                    <div class="alert alert-<?= e($statusType) ?>" role="alert" aria-live="polite">
-                        <?= e($statusMessage) ?>
+    <main id="main-content" class="auth-main">
+        <div class="container">
+            <div class="auth-grid">
+                <div class="auth-intro">
+                    <span class="hero-eyebrow">Account Recovery</span>
+                    <h1>Reset Your<br>Password</h1>
+                    <p>Enter the email address associated with your Guspart Autoshop account and we will generate a secure, time-limited recovery link.</p>
+                    <ul class="auth-highlights">
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Single-use cryptographic recovery token
+                        </li>
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Automatically expires after 15 minutes for safety
+                        </li>
+                    </ul>
+                    <div class="auth-switch">
+                        <span>Remember your password?</span>
+                        <a href="login.php" class="btn btn-outline btn-sm">Back to Login</a>
                     </div>
-                <?php endif; ?>
+                </div>
 
-                <form method="POST" data-loading-text="Sending recovery link...">
-                    <?= csrf_field() ?>
-
-                    <div class="form-group">
-                        <label for="email">Registered Email</label>
-                        <input id="email" type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" placeholder="you@example.com" autocomplete="email" required>
+                <div class="auth-card">
+                    <div class="auth-card-header">
+                        <h2>Forgot Password</h2>
+                        <p class="auth-card-subtitle">Enter your registered email to receive a reset link.</p>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block btn-lg">Send Recovery Link</button>
+                    <?php if ($statusMessage !== ''): ?>
+                        <div class="alert alert-<?= e($statusType) ?>" role="alert" aria-live="polite">
+                            <?= e($statusMessage) ?>
+                        </div>
+                    <?php endif; ?>
 
-                    <div class="auth-footer-link">
-                        Already have a reset token? <a href="reset_password.php">Reset password</a>
-                    </div>
-                    <div class="auth-footer-link" style="margin-top: 8px;">
-                        <a href="login.php">&larr; Back to Sign In</a>
-                    </div>
-                </form>
+                    <form method="POST" data-loading-text="Sending recovery link...">
+                        <?= csrf_field() ?>
+
+                        <div class="form-group">
+                            <label for="email">Registered Email</label>
+                            <input id="email" type="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" placeholder="you@example.com" autocomplete="email" required>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block btn-lg">Send Recovery Link</button>
+
+                        <div class="auth-footer-link">
+                            Already have a recovery token? <a href="reset_password.php">Reset password</a>
+                        </div>
+                    </form>
+                </div>
             </div>
-
-            <p class="auth-meta-footer">&copy; 2024 Guspart Autoshop</p>
         </div>
     </main>
+
+    <section class="features-band" id="footer">
+        <div class="container">
+            <div class="features-grid">
+                <div class="feature-item">
+                    <div class="feature-icon"><img src="gambar3.png" alt="Free Shipping"></div>
+                    <div>
+                        <h3>Free Shipping</h3>
+                        <p>Fast, reliable delivery straight to your garage.</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon"><img src="gambar4.png" alt="24/7 Support"></div>
+                    <div>
+                        <h3>24/7 Support</h3>
+                        <p>Ready to help you find the exact compatible part.</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon"><img src="gambar5.png" alt="Free Return"></div>
+                    <div>
+                        <h3>Free Return</h3>
+                        <p>Hassle-free returns if a component doesn't fit.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <script src="assets/js/main.js"></script>
 </body>

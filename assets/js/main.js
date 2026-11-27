@@ -78,6 +78,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
+    // Close modals when clicking the dark backdrop
+    document.querySelectorAll('.popup').forEach(function (popup) {
+        popup.addEventListener('click', function (e) {
+            if (e.target === popup) {
+                popup.classList.remove('active');
+            }
+        });
+    });
+
     // Close modals and menus on Escape key
     document.addEventListener('keydown', function (e) {
         if (e.key !== 'Escape') return;
