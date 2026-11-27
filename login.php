@@ -44,7 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $passwordValid = true;
                     $needsRehash = password_needs_rehash($stored, PASSWORD_DEFAULT);
                 } elseif (hash_equals($stored, $passwordInput)) {
-                    // Seamless upgrade path for legacy seeded plaintext demo accounts
                     $passwordValid = true;
                     $needsRehash = true;
                 }
@@ -100,85 +99,136 @@ if (isset($_GET['success'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign In - Guspart Autoshop</title>
+    <title>Login - Guspart Autoshop</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 
-<body class="auth-page">
+<body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
-    <main id="main-content" class="auth-shell">
-        <div class="auth-box">
-            <a href="login.php" class="auth-brand-top">
+    <header class="site-header">
+        <div class="header-inner">
+            <a href="login.php" class="brand-logo">
                 <img src="gambar1.png" alt="Guspart Autoshop Logo">
-                <span>Guspart Autoshop</span>
+                <span class="brand-name">Guspart Autoshop</span>
             </a>
+            <nav class="site-nav" aria-label="Primary navigation">
+                <a href="index.php">Home</a>
+                <a href="product.php">Products</a>
+                <a href="order.php">Order</a>
+                <a href="#footer">Contact Us</a>
+                <a href="login.php" class="nav-cta active">Login</a>
+            </nav>
+            <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
 
-            <div class="auth-card">
-                <h1>Sign In</h1>
-                <p class="auth-card-subtitle">Access your customer store or staff portal.</p>
-
-                <?php if ($error_message !== ''): ?>
-                    <div class="alert alert-error" role="alert" aria-live="polite">
-                        <?= e($error_message) ?>
+    <main id="main-content" class="auth-main">
+        <div class="container">
+            <div class="auth-grid">
+                <div class="auth-intro">
+                    <span class="hero-eyebrow">Trusted Motorcycle &amp; Auto Spare Parts</span>
+                    <h1>Welcome to<br>Guspart Autoshop</h1>
+                    <p>Sign in to browse genuine spare parts, track your orders, or manage store inventory and deliveries from one unified platform.</p>
+                    <div class="auth-switch">
+                        <span>Don't have an account?</span>
+                        <a href="register.php" class="btn btn-outline btn-sm">Register here</a>
                     </div>
-                <?php endif; ?>
+                </div>
 
-                <?php if ($success_message !== ''): ?>
-                    <div class="alert alert-success" role="status" aria-live="polite">
-                        <?= e($success_message) ?>
-                    </div>
-                <?php endif; ?>
+                <div class="auth-card">
+                    <h2>Sign In</h2>
+                    <p class="auth-card-subtitle">Enter your role and credentials to continue.</p>
 
-                <form method="POST" data-loading-text="Signing in...">
-                    <?= csrf_field() ?>
-
-                    <div class="form-group">
-                        <label for="role">Role</label>
-                        <select id="role" name="role" required>
-                            <option value="" disabled <?= empty($_POST['role']) ? 'selected' : '' ?>>Select your role</option>
-                            <option value="customer" <?= (($_POST['role'] ?? '') === 'customer') ? 'selected' : '' ?>>Customer</option>
-                            <option value="admin" <?= (($_POST['role'] ?? '') === 'admin') ? 'selected' : '' ?>>Admin</option>
-                            <option value="courier" <?= (($_POST['role'] ?? '') === 'courier') ? 'selected' : '' ?>>Kurir (Courier)</option>
-                            <option value="owner" <?= (($_POST['role'] ?? '') === 'owner') ? 'selected' : '' ?>>Owner</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="username">Username</label>
-                        <input id="username" type="text" name="username" value="<?= e($_POST['username'] ?? '') ?>" placeholder="Enter your username" autocomplete="username" required>
-                    </div>
-
-                    <div class="form-group">
-                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-                            <label for="password" style="margin-bottom: 0;">Password</label>
-                            <a href="forgot_password.php" style="font-size: 0.82rem; font-weight: 600; color: var(--primary);">Forgot password?</a>
+                    <?php if ($error_message !== ''): ?>
+                        <div class="alert alert-error" role="alert" aria-live="polite">
+                            <?= e($error_message) ?>
                         </div>
-                        <div class="password-wrap">
-                            <input id="password" type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
-                            <button type="button" class="password-toggle" data-target="password" aria-label="Show password" aria-pressed="false">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                </svg>
-                            </button>
+                    <?php endif; ?>
+
+                    <?php if ($success_message !== ''): ?>
+                        <div class="alert alert-success" role="status" aria-live="polite">
+                            <?= e($success_message) ?>
                         </div>
-                    </div>
+                    <?php endif; ?>
 
-                    <button type="submit" class="btn btn-primary btn-block btn-lg" name="submit">Sign In</button>
+                    <form method="POST" data-loading-text="Signing in...">
+                        <?= csrf_field() ?>
 
-                    <div class="auth-footer-link">
-                        Don't have an account? <a href="register.php">Create one</a>
-                    </div>
-                </form>
+                        <div class="form-group">
+                            <label for="role">Role</label>
+                            <select id="role" name="role" required>
+                                <option value="" disabled <?= empty($_POST['role']) ? 'selected' : '' ?>>-- Select Role --</option>
+                                <option value="customer" <?= (($_POST['role'] ?? '') === 'customer') ? 'selected' : '' ?>>Customer</option>
+                                <option value="admin" <?= (($_POST['role'] ?? '') === 'admin') ? 'selected' : '' ?>>Admin</option>
+                                <option value="courier" <?= (($_POST['role'] ?? '') === 'courier') ? 'selected' : '' ?>>Kurir</option>
+                                <option value="owner" <?= (($_POST['role'] ?? '') === 'owner') ? 'selected' : '' ?>>Owner</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="username">Username</label>
+                            <input id="username" type="text" name="username" value="<?= e($_POST['username'] ?? '') ?>" placeholder="Enter your username" autocomplete="username" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <div class="password-wrap">
+                                <input id="password" type="password" name="password" placeholder="Enter your password" autocomplete="current-password" required>
+                                <button type="button" class="password-toggle" data-target="password" aria-label="Show password" aria-pressed="false">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                        <circle cx="12" cy="12" r="3"></circle>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block btn-lg" name="submit">Login</button>
+
+                        <div class="auth-footer-link">
+                            <a href="forgot_password.php">Forgot Password?</a>
+                        </div>
+                    </form>
+                </div>
             </div>
-
-            <p class="auth-meta-footer">&copy; 2024 Guspart Autoshop</p>
         </div>
     </main>
+
+    <section class="features-band" id="footer">
+        <div class="container">
+            <div class="features-grid">
+                <div class="feature-item">
+                    <div class="feature-icon"><img src="gambar3.png" alt="Free Shipping"></div>
+                    <div>
+                        <h3>Free Shipping</h3>
+                        <p>Fast, reliable delivery straight to your garage.</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon"><img src="gambar4.png" alt="24/7 Support"></div>
+                    <div>
+                        <h3>24/7 Support</h3>
+                        <p>Ready to help you find the exact compatible part.</p>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon"><img src="gambar5.png" alt="Free Return"></div>
+                    <div>
+                        <h3>Free Return</h3>
+                        <p>Hassle-free returns if a component doesn't fit.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <script src="assets/js/main.js"></script>
 </body>
