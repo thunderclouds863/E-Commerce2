@@ -1,49 +1,45 @@
 <?php
-session_start();
-$isLoggedIn = isset($_SESSION['username']);
-if (!$isLoggedIn) {
-    header("Location: login.php");
+require_once __DIR__ . '/includes/bootstrap.php';
+require_login();
+
+if (!isset($_GET['order_id']) || !ctype_digit((string)$_GET['order_id'])) {
+    header('Location: order-history.php');
     exit();
 }
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
-$conn = new mysqli($servername, $username, $password, $dbname);
+$order_id = (int)$_GET['order_id'];
+$user_id = (int)$_SESSION['user_id'];
+$conn = db();
 
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-$order_id = $_GET['order_id'];
-
+// Enforce ownership so customers can only inspect their own orders (prevents IDOR)
 $order_sql = "SELECT o.id, o.total_amount, o.status, o.created_at, o.address, o.payment_method
               FROM orders o
-              WHERE o.id = ?";
+              WHERE o.id = ? AND o.user_id = ?
+              LIMIT 1";
 $stmt_order = $conn->prepare($order_sql);
-$stmt_order->bind_param("i", $order_id);
+$stmt_order->bind_param('ii', $order_id, $user_id);
 $stmt_order->execute();
-$order_result = $stmt_order->get_result();
+$order = $stmt_order->get_result()->fetch_assoc();
+$stmt_order->close();
+
+if (!$order) {
+    http_response_code(404);
+    die('Order not found or access denied.');
+}
 
 $order_items_sql = "SELECT oi.*, p.name AS product_name, p.price AS product_price
                     FROM order_items oi
                     JOIN products p ON oi.product_id = p.id
                     WHERE oi.order_id = ?";
 $stmt_items = $conn->prepare($order_items_sql);
-$stmt_items->bind_param("i", $order_id);
+$stmt_items->bind_param('i', $order_id);
 $stmt_items->execute();
 $order_items_result = $stmt_items->get_result();
 
-if ($order_result->num_rows > 0) {
-    $order = $order_result->fetch_assoc();
-} else {
-    echo "Order not found.";
-    exit;
-}
-
-$usernameDisplay = htmlspecialchars($_SESSION['username'], ENT_QUOTES, 'UTF-8');
+$usernameDisplay = e($_SESSION['username']);
 $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
+$cartCount = cart_item_count();
+$canReview = ($order['status'] === 'Selesai');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -59,6 +55,8 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
 </head>
 
 <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
     <header class="site-header">
         <div class="header-inner">
             <a href="index.php" class="brand-logo">
@@ -68,21 +66,17 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
             <nav class="site-nav" aria-label="Primary navigation">
                 <a href="index.php">Home</a>
                 <a href="product.php">Products</a>
-                <a href="order.php">Order</a>
+                <a href="order.php">Order<?= $cartCount > 0 ? " ({$cartCount})" : '' ?></a>
                 <a href="order-history.php" class="active">Order History</a>
                 <a href="index.php#footer">Contact Us</a>
                 <div class="user-menu">
-                    <?php if ($isLoggedIn): ?>
-                        <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
-                            <span class="user-avatar"><?= $avatarInitial ?></span>
-                            <span><?= $usernameDisplay ?></span>
-                        </button>
-                        <div class="dropdown-menu">
-                            <a href="logout.php">Logout</a>
-                        </div>
-                    <?php else: ?>
-                        <a href="login.php" class="nav-cta">Login</a>
-                    <?php endif; ?>
+                    <button type="button" class="user-trigger" aria-haspopup="true" aria-expanded="false">
+                        <span class="user-avatar"><?= $avatarInitial ?></span>
+                        <span><?= $usernameDisplay ?></span>
+                    </button>
+                    <div class="dropdown-menu">
+                        <a href="logout.php">Logout</a>
+                    </div>
                 </div>
             </nav>
             <button type="button" class="hamburger" onclick="toggleMenu()" aria-label="Toggle navigation" aria-expanded="false">
@@ -93,12 +87,12 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
         </div>
     </header>
 
-    <main class="page-section">
+    <main id="main-content" class="page-section">
         <div class="container">
             <div class="section-header">
                 <div>
                     <h1>Order #<?= (int)$order['id'] ?></h1>
-                    <p>Placed on <?= htmlspecialchars($order['created_at']) ?></p>
+                    <p>Placed on <?= e($order['created_at']) ?></p>
                 </div>
                 <a href="order-history.php" class="btn btn-outline btn-sm">&larr; Back to Order History</a>
             </div>
@@ -108,20 +102,20 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
                     <div class="meta-box">
                         <div class="meta-label">Status</div>
                         <div class="meta-value">
-                            <span class="badge badge-info"><?= htmlspecialchars(ucfirst($order['status'])) ?></span>
+                            <span class="badge <?= status_badge_class($order['status']) ?>"><?= e(ucfirst($order['status'])) ?></span>
                         </div>
                     </div>
                     <div class="meta-box">
                         <div class="meta-label">Payment Method</div>
-                        <div class="meta-value"><?= htmlspecialchars(ucwords(str_replace('_', ' ', $order['payment_method']))) ?></div>
+                        <div class="meta-value"><?= e(ucwords(str_replace('_', ' ', $order['payment_method']))) ?></div>
                     </div>
                     <div class="meta-box">
                         <div class="meta-label">Shipping Address</div>
-                        <div class="meta-value"><?= htmlspecialchars($order['address']) ?></div>
+                        <div class="meta-value"><?= e($order['address']) ?></div>
                     </div>
                     <div class="meta-box">
                         <div class="meta-label">Total Amount</div>
-                        <div class="meta-value" style="color: var(--primary);">Rp <?= number_format($order['total_amount'], 0, ',', '.') ?></div>
+                        <div class="meta-value" style="color: var(--primary);"><?= format_rp($order['total_amount']) ?></div>
                     </div>
                 </div>
 
@@ -134,6 +128,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
                                 <th>Quantity</th>
                                 <th>Unit Price</th>
                                 <th>Subtotal</th>
+                                <?php if ($canReview): ?><th>Review</th><?php endif; ?>
                             </tr>
                         </thead>
                         <tbody>
@@ -144,10 +139,13 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
                                 $total_order_amount += $total_product_price;
                                 ?>
                                 <tr>
-                                    <td><strong><?= htmlspecialchars($item['product_name']) ?></strong></td>
+                                    <td><strong><?= e($item['product_name']) ?></strong></td>
                                     <td><?= (int)$item['quantity'] ?></td>
-                                    <td>Rp <?= number_format($item['product_price'], 0, ',', '.') ?></td>
-                                    <td><strong>Rp <?= number_format($total_product_price, 0, ',', '.') ?></strong></td>
+                                    <td><?= format_rp($item['product_price']) ?></td>
+                                    <td><strong><?= format_rp($total_product_price) ?></strong></td>
+                                    <?php if ($canReview): ?>
+                                        <td><a href="product-details.php?id=<?= (int)$item['product_id'] ?>" class="btn btn-primary btn-sm">Write Review</a></td>
+                                    <?php endif; ?>
                                 </tr>
                             <?php endwhile; ?>
                         </tbody>
@@ -156,7 +154,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
 
                 <div class="checkout-summary-box" style="margin-top: 24px;">
                     <span style="font-weight: 600; color: var(--primary);">Total Order Amount</span>
-                    <span class="total-price">Rp <?= number_format($total_order_amount, 0, ',', '.') ?></span>
+                    <span class="total-price"><?= format_rp($total_order_amount) ?></span>
                 </div>
             </div>
         </div>
@@ -170,6 +168,3 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
 </body>
 
 </html>
-<?php
-$conn->close();
-?>

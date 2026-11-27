@@ -1,56 +1,43 @@
 <?php
-session_start();
-if (!isset($_SESSION['role']) || $_SESSION['role'] != 'owner') {
-  header("Location: index.php");
-  exit();
-}
+require_once __DIR__ . '/includes/bootstrap.php';
+require_role(['owner']);
 
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "part";
+$conn = db();
+$flashSuccess = '';
+$flashError = '';
 
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-  die("Connection failed: " . $conn->connect_error);
-}
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-  if (isset($_POST['action']) && isset($_POST['user_id'])) {
-    $user_id = $_POST['user_id'];
-    $action = $_POST['action'];
-
-    $valid_actions = ['approve_user', 'reject_user', 'delete_user'];
-    if (in_array($action, $valid_actions)) {
-      switch ($action) {
-        case 'approve_user':
-          $sql = "UPDATE users SET status = ? WHERE id = ?";
-          $stmt = $conn->prepare($sql);
-          $status = 'approved';
-          $stmt->bind_param("si", $status, $user_id);
-          $stmt->execute();
-          break;
-
-        case 'reject_user':
-          $sql = "UPDATE users SET status = ? WHERE id = ?";
-          $stmt = $conn->prepare($sql);
-          $status = 'rejected';
-          $stmt->bind_param("si", $status, $user_id);
-          $stmt->execute();
-          break;
-
-        case 'delete_user':
-          $sql = "DELETE FROM users WHERE id = ?";
-          $stmt = $conn->prepare($sql);
-          $stmt->bind_param("i", $user_id);
-          $stmt->execute();
-          break;
-      }
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['user_id'])) {
+    if (!verify_csrf()) {
+        $flashError = 'Invalid security token. Please try again.';
     } else {
-      echo "Invalid action.";
+        $user_id = (int)$_POST['user_id'];
+        $action = $_POST['action'];
+
+        $valid_actions = ['approve_user', 'reject_user', 'delete_user'];
+        if (in_array($action, $valid_actions, true) && $user_id > 0) {
+            if ($action === 'approve_user') {
+                $stmt = $conn->prepare("UPDATE users SET status = 'approved' WHERE id = ?");
+                $stmt->bind_param('i', $user_id);
+                $stmt->execute();
+                $stmt->close();
+                $flashSuccess = "User #{$user_id} approved.";
+            } elseif ($action === 'reject_user') {
+                $stmt = $conn->prepare("UPDATE users SET status = 'rejected' WHERE id = ?");
+                $stmt->bind_param('i', $user_id);
+                $stmt->execute();
+                $stmt->close();
+                $flashSuccess = "User #{$user_id} rejected.";
+            } elseif ($action === 'delete_user') {
+                $stmt = $conn->prepare('DELETE FROM users WHERE id = ? AND role != "owner"');
+                $stmt->bind_param('i', $user_id);
+                $stmt->execute();
+                $stmt->close();
+                $flashSuccess = "User #{$user_id} deleted.";
+            }
+        } else {
+            $flashError = 'Invalid action.';
+        }
     }
-  }
 }
 
 $pending_users = $conn->query("SELECT * FROM users WHERE status = 'pending'");
@@ -58,8 +45,8 @@ $customers = $conn->query("SELECT * FROM users WHERE role = 'customer' AND statu
 $employees = $conn->query("SELECT * FROM users WHERE role = 'admin' AND status = 'approved'");
 $couriers = $conn->query("SELECT * FROM users WHERE role = 'courier' AND status = 'approved'");
 
-$usernameDisplay = htmlspecialchars($_SESSION['username'] ?? 'Owner', ENT_QUOTES, 'UTF-8');
-$avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
+$usernameDisplay = e($_SESSION['username']);
+$avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -75,6 +62,8 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
 </head>
 
 <body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <header class="site-header">
     <div class="header-inner">
       <a href="owner_dashboard.php" class="brand-logo">
@@ -104,7 +93,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
     </div>
   </header>
 
-  <main class="page-section">
+  <main id="main-content" class="page-section">
     <div class="container">
       <div class="section-header">
         <div>
@@ -112,6 +101,13 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
           <p>Approve pending registrations and review active accounts by role.</p>
         </div>
       </div>
+
+      <?php if ($flashSuccess !== ''): ?>
+        <div class="alert alert-success" role="status" aria-live="polite"><?= e($flashSuccess) ?></div>
+      <?php endif; ?>
+      <?php if ($flashError !== ''): ?>
+        <div class="alert alert-error" role="alert" aria-live="polite"><?= e($flashError) ?></div>
+      <?php endif; ?>
 
       <div class="portal-grid-2">
         <div class="surface-card">
@@ -131,15 +127,17 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
                   <?php while ($user = $pending_users->fetch_assoc()): ?>
                     <tr>
                       <td><strong>#<?= (int)$user['id'] ?></strong></td>
-                      <td><?= htmlspecialchars($user['username']) ?></td>
-                      <td><span class="badge badge-warning"><?= htmlspecialchars(ucfirst($user['role'])) ?></span></td>
+                      <td><?= e($user['username']) ?></td>
+                      <td><span class="badge badge-warning"><?= e(ucfirst($user['role'])) ?></span></td>
                       <td>
                         <div class="table-actions">
                           <form method="POST" style="display:inline;">
+                            <?= csrf_field() ?>
                             <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
                             <button type="submit" name="action" value="approve_user" class="btn btn-success btn-sm">Approve</button>
                           </form>
                           <form method="POST" style="display:inline;">
+                            <?= csrf_field() ?>
                             <input type="hidden" name="user_id" value="<?= (int)$user['id'] ?>">
                             <button type="submit" name="action" value="reject_user" class="btn btn-danger btn-sm">Reject</button>
                           </form>
@@ -174,7 +172,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
                   <?php while ($customer = $customers->fetch_assoc()): ?>
                     <tr>
                       <td>#<?= (int)$customer['id'] ?></td>
-                      <td><strong><?= htmlspecialchars($customer['username']) ?></strong></td>
+                      <td><strong><?= e($customer['username']) ?></strong></td>
                     </tr>
                   <?php endwhile; ?>
                 </tbody>
@@ -196,7 +194,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
                   <?php while ($employee = $employees->fetch_assoc()): ?>
                     <tr>
                       <td>#<?= (int)$employee['id'] ?></td>
-                      <td><strong><?= htmlspecialchars($employee['username']) ?></strong></td>
+                      <td><strong><?= e($employee['username']) ?></strong></td>
                     </tr>
                   <?php endwhile; ?>
                 </tbody>
@@ -218,7 +216,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'] ?? 'O', 0, 1));
                   <?php while ($courier = $couriers->fetch_assoc()): ?>
                     <tr>
                       <td>#<?= (int)$courier['id'] ?></td>
-                      <td><strong><?= htmlspecialchars($courier['username']) ?></strong></td>
+                      <td><strong><?= e($courier['username']) ?></strong></td>
                     </tr>
                   <?php endwhile; ?>
                 </tbody>

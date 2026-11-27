@@ -1,64 +1,76 @@
 <?php
-// Database connection settings
-$host = 'localhost';
-$username = 'root';
-$password = '';
-$database = 'part';
+require_once __DIR__ . '/includes/bootstrap.php';
 
-// Create a connection
-$conn = new mysqli($host, $username, $password, $database);
-
-// Check the connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: register.php');
+    exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $role = $_POST['role'];
-    $username = $_POST['username'];
-    $email = $_POST['email'];
-    $password = $_POST['password']; // Plain text password
-    $confirm_password = $_POST['confirm_password'];
+if (!verify_csrf()) {
+    header('Location: register.php?error=' . urlencode('Invalid security token. Please try again.'));
+    exit;
+}
 
-    // Password match validation
-    if ($password !== $confirm_password) {
-        header("Location: register.php?error=Passwords do not match!");
-        exit;
-    }
+$role = trim($_POST['role'] ?? '');
+$username = trim($_POST['username'] ?? '');
+$email = trim($_POST['email'] ?? '');
+$password = $_POST['password'] ?? '';
+$confirm_password = $_POST['confirm_password'] ?? '';
 
-    // Role validation
-    $allowed_roles = ['customer', 'admin', 'courier'];
-    if (!in_array($role, $allowed_roles)) {
-        header("Location: register.php?error=Invalid role selected!");
-        exit;
-    }
+if ($username === '' || strlen($username) < 3 || strlen($username) > 50) {
+    header('Location: register.php?error=' . urlencode('Username must be between 3 and 50 characters.'));
+    exit;
+}
 
-    // Status for Admin and Courier
-    $status = ($role === 'customer') ? 'approved' : 'pending';
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    header('Location: register.php?error=' . urlencode('Please provide a valid email address.'));
+    exit;
+}
 
-    // Check if username or email already exists
-    $stmt_check = $conn->prepare("SELECT * FROM users WHERE username = ? OR email = ?");
-    $stmt_check->bind_param('ss', $username, $email);
-    $stmt_check->execute();
-    $result = $stmt_check->get_result();
+if (strlen($password) < 6) {
+    header('Location: register.php?error=' . urlencode('Password must be at least 6 characters long.'));
+    exit;
+}
 
-    if ($result->num_rows > 0) {
-        header("Location: register.php?error=Username or email already exists!");
-    } else {
-        // Insert Data into Database with plain text password
-        $stmt = $conn->prepare("INSERT INTO users (username, email, password, role, status) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param('sssss', $username, $email, $password, $role, $status);
+if ($password !== $confirm_password) {
+    header('Location: register.php?error=' . urlencode('Passwords do not match!'));
+    exit;
+}
 
-        if ($stmt->execute()) {
-            header('Location: login.php?success=Account created successfully!');
-        } else {
-            header("Location: register.php?error=Error: " . $stmt->error);
-        }
+$allowed_roles = ['customer', 'admin', 'courier'];
+if (!in_array($role, $allowed_roles, true)) {
+    header('Location: register.php?error=' . urlencode('Invalid role selected!'));
+    exit;
+}
 
-        $stmt->close();
-    }
+$status = ($role === 'customer') ? 'approved' : 'pending';
+$conn = db();
 
+$stmt_check = $conn->prepare('SELECT id FROM users WHERE username = ? OR email = ?');
+$stmt_check->bind_param('ss', $username, $email);
+$stmt_check->execute();
+$result = $stmt_check->get_result();
+
+if ($result->num_rows > 0) {
     $stmt_check->close();
-    $conn->close();
+    header('Location: register.php?error=' . urlencode('Username or email already exists!'));
+    exit;
 }
-?>
+$stmt_check->close();
+
+$hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+$stmt = $conn->prepare('INSERT INTO users (username, email, password, role, status) VALUES (?, ?, ?, ?, ?)');
+$stmt->bind_param('sssss', $username, $email, $hashedPassword, $role, $status);
+
+if ($stmt->execute()) {
+    $stmt->close();
+    $msg = ($status === 'pending')
+        ? 'Account created! Your registration is pending owner approval.'
+        : 'Account created successfully! You can now sign in.';
+    header('Location: login.php?success=' . urlencode($msg));
+    exit;
+}
+
+$stmt->close();
+header('Location: register.php?error=' . urlencode('Registration failed. Please try again.'));
+exit;
