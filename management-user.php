@@ -121,8 +121,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-$pending_users = $conn->query("SELECT id, username, email, role, status FROM users WHERE status = 'pending' ORDER BY id DESC");
-$all_managed_users = $conn->query("SELECT id, username, email, role, status FROM users WHERE role != 'owner' AND status != 'pending' ORDER BY FIELD(role, 'admin', 'courier', 'customer'), id ASC");
+$pending_users = $conn->query("SELECT id, username, email, role, status FROM users WHERE status = 'pending' AND role != 'owner' ORDER BY id DESC");
+$all_managed_users = $conn->query("SELECT id, username, email, role, status FROM users WHERE role != 'owner' ORDER BY FIELD(role, 'admin', 'courier', 'customer'), id ASC");
+$pendingCount = $pending_users ? (int)$pending_users->num_rows : 0;
+$managedCount = $all_managed_users ? (int)$all_managed_users->num_rows : 0;
 
 $usernameDisplay = e($_SESSION['username']);
 $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
@@ -192,7 +194,7 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
       <!-- Pending Approvals -->
       <div class="surface-card" style="padding: 0; overflow: hidden; margin-bottom: 28px;">
         <div class="section-card-header">
-          <h2>Pending Approvals</h2>
+          <h2>Pending Approvals <span class="count-pill <?= $pendingCount > 0 ? 'warning' : '' ?>"><?= $pendingCount ?></span></h2>
         </div>
         <div class="table-responsive" style="border: none; border-radius: 0;">
           <table class="data-table">
@@ -242,8 +244,16 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
       <!-- Managed Users (Admins, Couriers, Customers) -->
       <div class="surface-card" style="padding: 0; overflow: hidden;">
         <div class="section-card-header">
-          <h2>All Users (Admins, Couriers &amp; Customers)</h2>
-          <input type="text" id="userSearch" class="search-input" style="max-width: 260px; padding: 8px 12px;" placeholder="Filter by username or role..." aria-label="Filter users">
+          <h2>All Users <span class="count-pill"><?= $managedCount ?></span></h2>
+          <div class="table-toolbar">
+            <select id="roleFilter" aria-label="Filter users by role">
+              <option value="">All Roles</option>
+              <option value="admin">Admin</option>
+              <option value="courier">Courier</option>
+              <option value="customer">Customer</option>
+            </select>
+            <input type="text" id="userSearch" class="search-input" placeholder="Search username or email..." aria-label="Filter users">
+          </div>
         </div>
         <div class="table-responsive" style="border: none; border-radius: 0;">
           <table class="data-table" id="usersTable">
@@ -260,7 +270,8 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
             <tbody>
               <?php if ($all_managed_users && $all_managed_users->num_rows > 0): ?>
                 <?php while ($u = $all_managed_users->fetch_assoc()): ?>
-                  <tr data-search="<?= e(strtolower($u['username'] . ' ' . $u['email'] . ' ' . $u['role'])) ?>">
+                  <?php $userJson = json_encode($u, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>
+                  <tr data-search="<?= e(strtolower($u['username'] . ' ' . $u['email'] . ' ' . $u['role'])) ?>" data-role="<?= e(strtolower($u['role'])) ?>">
                     <td><strong>#<?= (int)$u['id'] ?></strong></td>
                     <td><strong><?= e($u['username']) ?></strong></td>
                     <td><?= e($u['email']) ?></td>
@@ -268,8 +279,8 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
                     <td><span class="badge <?= status_badge_class($u['status']) ?>"><?= e(ucfirst($u['status'])) ?></span></td>
                     <td>
                       <div class="table-actions">
-                        <button type="button" class="btn btn-outline btn-sm" onclick='openEditUser(<?= e(json_encode($u)) ?>)'>Edit</button>
-                        <form method="POST" style="display:inline;" onsubmit="return confirm('Delete user <?= e($u['username']) ?>? This action cannot be undone.');">
+                        <button type="button" class="btn btn-outline btn-sm js-edit-user" data-user="<?= e($userJson) ?>">Edit</button>
+                        <form method="POST" style="display:inline;" class="js-delete-user-form" data-username="<?= e($u['username']) ?>">
                           <?= csrf_field() ?>
                           <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
                           <button type="submit" name="action" value="delete_user" class="btn btn-danger btn-sm">Delete</button>
@@ -302,15 +313,23 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
         <input type="hidden" name="action" value="add_user">
         <div class="form-group">
           <label for="add-username">Username</label>
-          <input id="add-username" type="text" name="username" minlength="3" maxlength="50" required>
+          <input id="add-username" type="text" name="username" minlength="3" maxlength="50" placeholder="Enter username" required>
         </div>
         <div class="form-group">
           <label for="add-email">Email</label>
-          <input id="add-email" type="email" name="email" required>
+          <input id="add-email" type="email" name="email" placeholder="user@example.com" required>
         </div>
         <div class="form-group">
           <label for="add-password">Password</label>
-          <input id="add-password" type="password" name="password" minlength="6" placeholder="Minimum 6 characters" required>
+          <div class="password-wrap">
+            <input id="add-password" type="password" name="password" minlength="6" placeholder="Minimum 6 characters" required>
+            <button type="button" class="password-toggle" data-target="add-password" aria-label="Show password" aria-pressed="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label for="add-role">Role</label>
@@ -372,7 +391,15 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
         </div>
         <div class="form-group">
           <label for="edit-new-password">New Password (optional)</label>
-          <input id="edit-new-password" type="password" name="new_password" minlength="6" placeholder="Leave blank to keep current password">
+          <div class="password-wrap">
+            <input id="edit-new-password" type="password" name="new_password" minlength="6" placeholder="Leave blank to keep current password">
+            <button type="button" class="password-toggle" data-target="edit-new-password" aria-label="Show password" aria-pressed="false">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                <circle cx="12" cy="12" r="3"></circle>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="popup-actions">
           <button type="button" class="btn btn-outline" onclick="toggleUserModal('edit')">Cancel</button>
@@ -405,15 +432,37 @@ $avatarInitial = strtoupper(substr($_SESSION['username'], 0, 1));
       toggleUserModal('edit');
     }
 
+    document.querySelectorAll('.js-edit-user').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        try {
+          const user = JSON.parse(btn.getAttribute('data-user') || '{}');
+          openEditUser(user);
+        } catch (err) {}
+      });
+    });
+
+    document.querySelectorAll('.js-delete-user-form').forEach(function (form) {
+      form.addEventListener('submit', function (e) {
+        const uname = form.getAttribute('data-username') || 'this user';
+        if (!window.confirm('Delete user "' + uname + '"? This action cannot be undone.')) {
+          e.preventDefault();
+        }
+      });
+    });
+
     const userSearch = document.getElementById('userSearch');
-    if (userSearch) {
-      userSearch.addEventListener('input', function () {
-        const q = userSearch.value.toLowerCase();
-        document.querySelectorAll('#usersTable tbody tr[data-search]').forEach(function (row) {
-          row.style.display = row.getAttribute('data-search').includes(q) ? '' : 'none';
-        });
+    const roleFilter = document.getElementById('roleFilter');
+    function applyUserFilters() {
+      const q = (userSearch ? userSearch.value : '').toLowerCase().trim();
+      const role = roleFilter ? roleFilter.value.toLowerCase() : '';
+      document.querySelectorAll('#usersTable tbody tr[data-search]').forEach(function (row) {
+        const matchesText = row.getAttribute('data-search').includes(q);
+        const matchesRole = !role || row.getAttribute('data-role') === role;
+        row.style.display = (matchesText && matchesRole) ? '' : 'none';
       });
     }
+    if (userSearch) userSearch.addEventListener('input', applyUserFilters);
+    if (roleFilter) roleFilter.addEventListener('change', applyUserFilters);
   </script>
 </body>
 

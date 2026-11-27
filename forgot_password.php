@@ -119,6 +119,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span class="hero-eyebrow">Account Recovery</span>
                     <h1>Reset Your<br>Password</h1>
                     <p>Enter the email address associated with your Guspart Autoshop account and we will generate a secure, time-limited recovery link.</p>
+                    <ul class="auth-highlights">
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Single-use cryptographic recovery token
+                        </li>
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Automatically expires after 15 minutes for safety
+                        </li>
+                    </ul>
                     <div class="auth-switch">
                         <span>Remember your password?</span>
                         <a href="login.php" class="btn btn-outline btn-sm">Back to Login</a>
@@ -126,8 +140,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="auth-card">
-                    <h2>Forgot Password</h2>
-                    <p class="auth-card-subtitle">Enter your registered email to receive a reset link.</p>
+                    <div class="auth-card-header">
+                        <h2>Forgot Password</h2>
+                        <p class="auth-card-subtitle">Enter your registered email to receive a reset link.</p>
+                    </div>
 
                     <?php if ($statusMessage !== ''): ?>
                         <div class="alert alert-<?= e($statusType) ?>" role="alert" aria-live="polite">

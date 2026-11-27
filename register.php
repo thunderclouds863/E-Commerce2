@@ -50,6 +50,26 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                     <span class="hero-eyebrow">Join Guspart Autoshop</span>
                     <h1>Create Your<br>Account Today</h1>
                     <p>Register as a customer to shop authentic spare parts, or apply as an admin or courier to join our operations team.</p>
+                    <ul class="auth-highlights">
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Instant activation for customer shopping accounts
+                        </li>
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Owner-verified onboarding for Admin &amp; Courier roles
+                        </li>
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Encrypted credentials and protected order history
+                        </li>
+                    </ul>
                     <div class="auth-switch">
                         <span>Already registered?</span>
                         <a href="login.php" class="btn btn-outline btn-sm">Login here</a>
@@ -57,8 +77,10 @@ if (isset($_SESSION['user_id'], $_SESSION['role'])) {
                 </div>
 
                 <div class="auth-card">
-                    <h2>Create an Account</h2>
-                    <p class="auth-card-subtitle">Fill in your details below to get started.</p>
+                    <div class="auth-card-header">
+                        <h2>Create an Account</h2>
+                        <p class="auth-card-subtitle">Fill in your details below to get started.</p>
+                    </div>
 
                     <?php if (isset($_GET['error'])): ?>
                         <div class="alert alert-error" role="alert" aria-live="polite">
