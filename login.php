@@ -137,6 +137,26 @@ if (isset($_GET['success'])) {
                     <span class="hero-eyebrow">Trusted Motorcycle &amp; Auto Spare Parts</span>
                     <h1>Welcome to<br>Guspart Autoshop</h1>
                     <p>Sign in to browse genuine spare parts, track your orders, or manage store inventory and deliveries from one unified platform.</p>
+                    <ul class="auth-highlights">
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Verified OEM &amp; aftermarket spare parts catalog
+                        </li>
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Live order fulfillment &amp; courier delivery tracking
+                        </li>
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Dedicated portals for Customer, Admin, Courier &amp; Owner
+                        </li>
+                    </ul>
                     <div class="auth-switch">
                         <span>Don't have an account?</span>
                         <a href="register.php" class="btn btn-outline btn-sm">Register here</a>
@@ -144,8 +164,10 @@ if (isset($_GET['success'])) {
                 </div>
 
                 <div class="auth-card">
-                    <h2>Sign In</h2>
-                    <p class="auth-card-subtitle">Enter your role and credentials to continue.</p>
+                    <div class="auth-card-header">
+                        <h2>Sign In</h2>
+                        <p class="auth-card-subtitle">Enter your role and credentials to continue.</p>
+                    </div>
 
                     <?php if ($error_message !== ''): ?>
                         <div class="alert alert-error" role="alert" aria-live="polite">

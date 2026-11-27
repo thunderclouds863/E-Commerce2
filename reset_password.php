@@ -142,6 +142,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span class="hero-eyebrow">Account Security</span>
                     <h1>Set a New<br>Password</h1>
                     <p>Enter your registered email, your recovery token, and choose a strong new password to regain access.</p>
+                    <ul class="auth-highlights">
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Minimum 6 characters with secure password hashing
+                        </li>
+                        <li>
+                            <span class="auth-check" aria-hidden="true">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            </span>
+                            Recovery token is invalidated immediately after reset
+                        </li>
+                    </ul>
                     <div class="auth-switch">
                         <span>Need a new link?</span>
                         <a href="forgot_password.php" class="btn btn-outline btn-sm">Request Link</a>
@@ -149,8 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="auth-card">
-                    <h2>Reset Password</h2>
-                    <p class="auth-card-subtitle">Complete the form below to update your password.</p>
+                    <div class="auth-card-header">
+                        <h2>Reset Password</h2>
+                        <p class="auth-card-subtitle">Complete the form below to update your password.</p>
+                    </div>
 
                     <?php if ($statusMessage !== ''): ?>
                         <div class="alert alert-<?= e($statusType) ?>" role="alert" aria-live="polite">
