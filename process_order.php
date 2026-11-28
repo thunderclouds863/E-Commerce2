@@ -18,7 +18,7 @@ $servername = "localhost";
 $username = "root";
 $password = "";
 $dbname = "part";
-$conn = new mysqli($servername, $username, $password, $dbname);
+$conn = demo_mysqli($servername, $username, $password, $dbname);
 
 // Masukkan data pesanan ke tabel orders
 $sql = "INSERT INTO orders (user_id, total_amount, address, payment_method, status)

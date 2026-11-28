@@ -9,7 +9,7 @@ $servername = "localhost";
 $username = "root";
 $password = "";
 $dbname = "ecommerce_db";
-$conn = new mysqli($servername, $username, $password, $dbname);
+$conn = demo_mysqli($servername, $username, $password, $dbname);
 
 // Check if the connection is successful
 if ($conn->connect_error) {
