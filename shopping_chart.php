@@ -256,15 +256,7 @@ if (isset($_POST['update_quantity'])) {
 
                             <div class="cart-item">
                                 <?php
-                                $product_image_name = 'produk' . $product['id'];
-                                $image_extension = pathinfo($product['image'], PATHINFO_EXTENSION);
-                                $image_path = 'uploads/' . $product_image_name . '.' . $image_extension;
-
-                                if (file_exists($image_path)) {
-                                    $image_src = $image_path;
-                                } else {
-                                    $image_src = 'uploads/default_' . $product_image_name . '.' . $image_extension;
-                                }
+                                $image_src = resolve_product_image((int)$product['id'], $product['image'] ?? null);
                                 ?>
 
                                 <img src="<?php echo $image_src; ?>" alt="<?php echo $product['name']; ?>">

@@ -86,6 +86,9 @@ function status_badge_class(string $status): string {
 function resolve_product_image(int $productId, ?string $imageField): string {
     $imageField = trim((string)$imageField);
     if ($imageField !== '') {
+        if (preg_match('#^https?://#i', $imageField)) {
+            return $imageField;
+        }
         if (file_exists($imageField) && is_file($imageField)) {
             return $imageField;
         }

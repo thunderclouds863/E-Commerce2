@@ -32,6 +32,14 @@ function uploadImage(array $image): array {
         $targetFile = $targetDir . 'produk' . $i . '.' . $ext;
     }
 
+    if (function_exists('demo_upload_store')) {
+        $stored = demo_upload_store($image['tmp_name'], $targetFile, 'ecommerce2/products/' . basename($targetFile), $targetFile);
+        if ($stored !== null) {
+            return ['ok' => true, 'path' => $stored];
+        }
+        return ['ok' => false, 'error' => 'Failed to save uploaded image.'];
+    }
+
     if (move_uploaded_file($image['tmp_name'], $targetFile)) {
         return ['ok' => true, 'path' => $targetFile];
     }
