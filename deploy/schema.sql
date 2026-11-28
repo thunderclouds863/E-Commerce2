@@ -48,7 +48,7 @@ CREATE TABLE orders (
     total_amount DECIMAL(10, 2) NOT NULL,
     address TEXT NOT NULL,
     payment_method ENUM('bank_transfer', 'credit_card', 'cash_on_delivery') NOT NULL,
-    status ENUM('Pending','Dikonfirmasi', 'Dikemas', 'Siap Dikirim', 'Dikirim', 'Sampai Tujuan', 'Selesai') DEFAULT 'pending',
+    status ENUM('Pending','Dikonfirmasi', 'Dikemas', 'Siap Dikirim', 'Dikirim', 'Sampai Tujuan', 'Selesai') DEFAULT 'Pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     product_id INT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
